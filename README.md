@@ -4,7 +4,7 @@
 
 > [!Warning]
 >
-> ** Vibe Coding 项目**
+> Vibe Coding 项目
 
 基于 **FastAPI + Vue 3** 的 Qwen3-TTS 全功能 Web 界面，替代原始 Gradio Demo，提供声音克隆、预设音色合成、自然语言声音设计、批量处理等能力。设计为受信任的本地工具，不适用于公共网络暴露。
 
@@ -21,6 +21,19 @@
 - **音色管理** — 音色文件 CRUD、预览、编辑
 - **模型热管理** — 多模型并发控制、LRU 淘汰、空闲自动卸载
 - **多后端分支** — 支持 3 种 Qwen3-TTS 实现（[QwenLM](https://github.com/QwenLM/Qwen3-TTS) / [streaming](https://github.com/rekuenkdr/Qwen3-TTS-streaming) / [faster](https://github.com/andimarafioti/faster-qwen3-tts)）
+
+---
+
+## 界面预览
+
+<table>
+  <tr>
+    <td><img width="100%" alt="Base-CN" src="https://github.com/user-attachments/assets/d0a4f27f-414d-4702-b17d-51287803da3f" /></td>
+    <td><img width="100%" alt="Voices-CN" src="https://github.com/user-attachments/assets/110528b5-bce5-4fc1-8a9e-a007ed669e58" /></td>
+    <td><img width="100%" alt="Batch-CN" src="https://github.com/user-attachments/assets/a8e54e29-7341-4b68-bc6a-723101f97492" /></td>
+    <td><img width="100%" alt="Setting-CN" src="https://github.com/user-attachments/assets/e12a58d0-ed02-4bd3-b9b3-421024b4298f" /></td>
+  </tr>
+</table>
 
 ---
 
