@@ -1,0 +1,3 @@
+minimumReleaseAgeExclude:
+  - '@tanstack/virtual-core@3.17.5'
+  - '@tanstack/vue-virtual@3.13.33'

@@ -1,0 +1,194 @@
+"""
+配置管理模块
+
+负责 WebUI 服务端配置的加载、保存和运行时访问。
+配置持久化存储于 SETTINGS_PATH 指定的 JSON 文件中。
+"""
+import json
+import os
+from pathlib import Path
+
+from fastapi import HTTPException
+
+# 配置文件路径：位于本文件同级目录下的 settings.json
+SETTINGS_PATH = Path(__file__).parent / "settings.json"
+
+
+class AppSettings:
+    """服务端全局配置"""
+
+    def __init__(self):
+        # 模型缓存相关
+        self.max_concurrent_models: int = 1    # 最大并发加载模型数
+        self.idle_unload_seconds: int = 600    # 模型空闲卸载时间（秒）
+
+        # QwenTTS 后端路径配置
+        self.backend_branch: str = "QwenLM/Qwen3-TTS"  # 后端仓库分支
+        self.project_dir: str = ""      # QwenTTS 项目所在目录
+        self.env_dir: str = ""          # Python 环境目录（可选，留空则自动搜索）
+        self.model_dir: str = ""        # 模型存放目录（可选，留空则使用 project_dir/models）
+        self.voice_dir: str = ""        # 音色文件目录（可选，留空则使用 project_dir/voice）
+        self.max_seq_len: int = 2048     # Faster 分支静态 KV Cache 最大序列长度
+
+        # 批量合成限制
+        self.batch_composer: dict = {
+            "max_segments": 1000,
+            "max_output_samples": 100000000,
+            "max_decoded_samples": 100000000,
+            "max_total_decoded_samples": 100000000,
+            "max_time_stretch_rate": 16.0,
+            "max_audio_mib": 32,
+            "max_total_audio_mib": 256,
+            "min_sample_rate": 8000,
+            "max_sample_rate": 192000,
+        }
+
+    @property
+    def qwen_configured(self) -> bool:
+        """QwenTTS 是否已配置"""
+        return bool(self.project_dir)
+
+    def to_dict(self) -> dict:
+        """将当前配置序列化为字典，用于 API 响应和 JSON 持久化"""
+        return {
+            "max_concurrent_models": self.max_concurrent_models,
+            "idle_unload_seconds": self.idle_unload_seconds,
+            "backend_branch": self.backend_branch,
+            "project_dir": self.project_dir,
+            "env_dir": self.env_dir,
+            "model_dir": self.model_dir,
+            "voice_dir": self.voice_dir,
+            "max_seq_len": self.max_seq_len,
+            "batch_composer": self.batch_composer,
+        }
+
+    def update(self, data: dict):
+        """用传入的字典更新配置，仅更新字典中存在的键"""
+        for key in (
+            "max_concurrent_models",
+            "idle_unload_seconds",
+            "backend_branch",
+            "project_dir",
+            "env_dir",
+            "model_dir",
+            "voice_dir",
+            "max_seq_len",
+        ):
+            if key in data:
+                setattr(self, key, data[key])
+        if "batch_composer" in data and isinstance(data["batch_composer"], dict):
+            self.batch_composer = {**self.batch_composer, **data["batch_composer"]}
+
+
+settings = AppSettings()
+
+
+def require_qwen():
+    """QwenTTS 可用性校验依赖项"""
+    if not settings.qwen_configured:
+        raise HTTPException(
+            status_code=503,
+            detail="QwenTTS not configured. Please set project directory in settings.",
+        )
+
+
+def load_settings():
+    """从 JSON 文件加载配置"""
+    if SETTINGS_PATH.exists():
+        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        settings.update(data)
+    else:
+        save_settings()
+
+
+def save_settings():
+    """将当前配置持久化到 JSON 文件"""
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(settings.to_dict(), f, indent=2, ensure_ascii=False)
+
+
+# ── 模型路径解析 ─────────────────────────────────────────────────
+
+
+def resolve_model_path(model_id: str) -> str:
+    """将模型 ID（目录名）解析为绝对路径"""
+    if os.path.isabs(model_id):
+        return model_id
+    model_dir = settings.model_dir
+    if not model_dir and settings.project_dir:
+        model_dir = os.path.join(settings.project_dir, "models")
+    if not model_dir:
+        raise ValueError(f"model_dir not configured, cannot resolve model id: {model_id}")
+    full = os.path.join(model_dir, model_id)
+    if not os.path.isdir(full):
+        raise ValueError(f"Model not found: {model_id} (resolved: {full})")
+    return os.path.abspath(full)
+
+
+# ── 虚拟环境检测 ─────────────────────────────────────────────────
+
+
+def detect_env_type(env_dir: str) -> str:
+    """检测指定目录的虚拟环境类型，返回类型标识
+
+    返回值:
+      - "venv":   PEP 405 标准虚拟环境（由 venv/pyvenv/virtualenv 创建）
+      - "conda":  Conda 环境
+      - "python": 通用 Python 环境（目录中包含 python 可执行文件但无以上标志）
+      - "":       无法识别
+    """
+    if not env_dir or not os.path.isdir(env_dir):
+        return ""
+
+    # PEP 405 标准虚拟环境标志文件
+    if os.path.isfile(os.path.join(env_dir, "pyvenv.cfg")):
+        return "venv"
+
+    # Conda 环境标志文件
+    if os.path.isfile(os.path.join(env_dir, "conda-meta", "history")):
+        return "conda"
+
+    # 通用 Python 环境：检查是否存在 python 可执行文件
+    python_exe = os.path.join(env_dir, "Scripts", "python.exe")  # Windows
+    if os.path.isfile(python_exe):
+        return "python"
+    python_bin = os.path.join(env_dir, "bin", "python")  # Unix/macOS
+    if os.path.isfile(python_bin):
+        return "python"
+    if os.path.isfile(os.path.join(env_dir, "bin", "python3")):
+        return "python"
+
+    return ""
+
+
+def resolve_env_python(env_dir: str) -> str:
+    """返回指定虚拟环境目录中的 Python 可执行文件路径"""
+    if not env_dir or not os.path.isdir(env_dir):
+        return ""
+
+    # 检查标准位置（Windows）
+    exe = os.path.join(env_dir, "Scripts", "python.exe")
+    if os.path.isfile(exe):
+        return exe
+
+    # Conda 环境（Windows）：python.exe 在环境根目录
+    exe = os.path.join(env_dir, "python.exe")
+    if os.path.isfile(exe):
+        return exe
+
+    # 检查标准位置（Unix/macOS）
+    exe = os.path.join(env_dir, "bin", "python")
+    if os.path.isfile(exe):
+        return exe
+    exe = os.path.join(env_dir, "bin", "python3")
+    if os.path.isfile(exe):
+        return exe
+
+    # Conda 环境（Unix/macOS）：python3 在环境根目录
+    exe = os.path.join(env_dir, "python3")
+    if os.path.isfile(exe):
+        return exe
+
+    return ""
