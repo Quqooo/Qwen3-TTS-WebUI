@@ -31,26 +31,17 @@ const resolvedSegments = computed<Segment[]>(() => {
   return props.segments ?? []
 })
 
-watch(() => props.modelValue, (_val, oldVal) => {
+function syncHeight() {
   const el = wrapper.value
   const content = inner.value
   if (!el || !content) return
+  el.style.height = content.scrollHeight + "px"
+}
 
-  const prev = el.scrollHeight
-
-  nextTick(() => {
-    const target = content.scrollHeight
-    if (target <= 0 && prev <= 0) return
-
-    if (oldVal === undefined) {
-      el.style.height = target + "px"
-      return
-    }
-
-    el.style.height = prev + "px"
-    el.getBoundingClientRect()
-    el.style.height = target + "px"
-  })
+watch(() => props.modelValue, () => {
+  // 片段切换后强制校准高度。ResizeObserver 仅在尺寸变化时触发，
+  // 若切换前后片段高度相同或测量时机不同可能错过，故手动同步一次。
+  nextTick(syncHeight)
 }, { immediate: true })
 
 watch(resolvedSegments, (segs) => {
@@ -61,13 +52,9 @@ watch(resolvedSegments, (segs) => {
 }, { immediate: true })
 
 onMounted(() => {
-  const el = wrapper.value
   const content = inner.value
-  if (!el || !content) return
-  const ro = new ResizeObserver(() => {
-    const h = content.scrollHeight
-    if (h > 0) el.style.height = h + "px"
-  })
+  if (!content) return
+  const ro = new ResizeObserver(syncHeight)
   ro.observe(content)
   onUnmounted(() => ro.disconnect())
 })
@@ -110,7 +97,7 @@ function select(val: string) {
       <div ref="inner">
         <template v-for="seg in resolvedSegments" :key="seg.value">
           <div
-            v-if="modelValue === seg.value"
+            v-show="modelValue === seg.value"
             :class="nested ? 'space-y-1' : 'border-t px-2 pb-3 pt-2.5 mx-1.5 space-y-2'"
           >
             <slot :name="seg.value" />

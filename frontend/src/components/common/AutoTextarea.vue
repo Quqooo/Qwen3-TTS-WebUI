@@ -14,8 +14,19 @@ const emit = defineEmits<{
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-let minHeight = 0
 const MAX_HEIGHT = 616
+
+function minHeight() {
+  const el = textareaRef.value
+  if (!el) return 0
+  const style = window.getComputedStyle(el)
+  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4
+  const paddingTop = parseFloat(style.paddingTop)
+  const paddingBottom = parseFloat(style.paddingBottom)
+  const borderTop = parseFloat(style.borderTopWidth)
+  const borderBottom = parseFloat(style.borderBottomWidth)
+  return lineHeight * (props.rows ?? 3) + paddingTop + paddingBottom + borderTop + borderBottom
+}
 
 function computeMaxHeight() {
   const el = textareaRef.value
@@ -36,7 +47,7 @@ function autoResize() {
   if (!el) return
   el.style.height = "auto"
   const natural = el.scrollHeight
-  const target = Math.max(natural, minHeight)
+  const target = Math.max(natural, minHeight())
   const limit = props.maxRows ? (computeMaxHeight() ?? MAX_HEIGHT) : MAX_HEIGHT
   if (target >= limit) {
     el.style.height = limit + "px"
@@ -48,12 +59,7 @@ function autoResize() {
 }
 
 onMounted(() => {
-  const el = textareaRef.value
-  if (el) {
-    el.style.height = "auto"
-    minHeight = el.scrollHeight
-    autoResize()
-  }
+  autoResize()
 })
 
 watch(() => props.modelValue, () => nextTick(autoResize))

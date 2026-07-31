@@ -266,8 +266,9 @@ watch(isDark, () => {
 })
 
 function onVolumeWheel(ev: WheelEvent) {
+  const base = Number(volume.value) || 0
   const delta = ev.deltaY > 0 ? -0.05 : 0.05
-  volume.value = Math.max(0, Math.min(1, volume.value + delta))
+  volume.value = Math.max(0, Math.min(1, base + delta))
 }
 
 watch(
@@ -420,7 +421,7 @@ function formatTime(s: number): string {
         <div class="flex items-center gap-1 shrink-0">
           <Volume2 class="w-3 h-3 text-muted-foreground" />
           <input
-            v-model="volume"
+            v-model.number="volume"
             type="range"
             min="0"
             max="1"
