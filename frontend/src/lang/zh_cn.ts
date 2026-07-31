@@ -335,6 +335,7 @@ export const zh_cn = {
       maxConcurrentHint: '每 GPU 最多加载的不同模型数，默认 1，滚轮 1 单位调整',
       idleUnload: '模型空闲超时（秒）',
       workerIdleUnload: 'Worker 空闲超时（秒）',
+      idleTimeoutHint: '设为 0 表示禁用空闲卸载',
       cacheStatus: '当前缓存状态',
       noCache: '无',
       unloadModel: '卸载模型',

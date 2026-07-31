@@ -335,6 +335,7 @@ export const en_us = {
       maxConcurrentHint: 'Max distinct models per GPU, default 1, scroll wheel to adjust by 1',
       idleUnload: 'Model Idle Timeout (s)',
       workerIdleUnload: 'Worker Idle Timeout (s)',
+      idleTimeoutHint: 'Set 0 to disable idle unload',
       cacheStatus: 'Cache Status',
       noCache: 'None',
       unloadModel: 'Unload Model',

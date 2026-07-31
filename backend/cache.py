@@ -561,18 +561,24 @@ class ModelCacheManager:
         asyncio.create_task(broadcast_worker_status())
 
     async def cleanup_idle(self, model_idle_seconds: float, worker_idle_seconds: float) -> Dict[str, Any]:
-        """卸载闲置模型实例，并停止空闲超时的无模型 Worker。"""
-        unloaded = await self.unload_idle(model_idle_seconds)
+        """卸载闲置模型实例，并停止空闲超时的无模型 Worker。
+
+        超时值 <= 0 表示禁用对应的自动清理（模型卸载 / Worker 停止）。
+        """
+        unloaded: List[Dict[str, str]] = []
+        if model_idle_seconds > 0:
+            unloaded = await self.unload_idle(model_idle_seconds)
         workers_stopped: List[str] = []
 
-        # 与模型加载/卸载共用操作锁，防止检查后有新模型加载，
-        # 却仍将刚加载完成的 Worker 误杀。
-        async with self._op_lock:
-            pool = self.pool
-            for gpu in pool.idle_worker_gpus(worker_idle_seconds):
-                _logger.info("Worker (GPU %s) idle for too long; force stopping", gpu)
-                await self._get_branch().worker_force_stop(gpu_id=gpu)
-                workers_stopped.append(gpu)
+        if worker_idle_seconds > 0:
+            # 与模型加载/卸载共用操作锁，防止检查后有新模型加载，
+            # 却仍将刚加载完成的 Worker 误杀。
+            async with self._op_lock:
+                pool = self.pool
+                for gpu in pool.idle_worker_gpus(worker_idle_seconds):
+                    _logger.info("Worker (GPU %s) idle for too long; force stopping", gpu)
+                    await self._get_branch().worker_force_stop(gpu_id=gpu)
+                    workers_stopped.append(gpu)
 
         return {
             "unloaded": unloaded,

@@ -295,16 +295,17 @@ onMounted(async () => {
                           />
                           <p class="text-[10px] text-muted-foreground">{{ $t('views.settings.maxConcurrentHint') }}</p>
                         </div>
-                        <div class="flex gap-3">
-                          <div class="flex-1 space-y-1.5">
-                            <label class="text-xs text-muted-foreground">{{ $t('views.settings.idleUnload') }}</label>
-                            <input v-model="idleTimeout" type="number" min="0" step="60" class="w-full px-3 py-2 text-sm" />
+                          <div class="flex gap-3">
+                            <div class="flex-1 space-y-1.5">
+                              <label class="text-xs text-muted-foreground">{{ $t('views.settings.idleUnload') }}</label>
+                              <input v-model="idleTimeout" type="number" min="0" step="60" class="w-full px-3 py-2 text-sm" />
+                            </div>
+                            <div class="flex-1 space-y-1.5">
+                              <label class="text-xs text-muted-foreground">{{ $t('views.settings.workerIdleUnload') }}</label>
+                              <input v-model="workerIdleTimeout" type="number" min="0" step="60" class="w-full px-3 py-2 text-sm" />
+                            </div>
                           </div>
-                          <div class="flex-1 space-y-1.5">
-                            <label class="text-xs text-muted-foreground">{{ $t('views.settings.workerIdleUnload') }}</label>
-                            <input v-model="workerIdleTimeout" type="number" min="0" step="60" class="w-full px-3 py-2 text-sm" />
-                          </div>
-                        </div>
+                          <p class="text-[10px] text-muted-foreground">{{ $t('views.settings.idleTimeoutHint') }}</p>
                       </div>
                       <div class="border rounded-lg p-3 bg-secondary/20 space-y-2">
                         <div class="flex items-center justify-between">
