@@ -16,6 +16,7 @@ function createTooltip(text: string): HTMLElement {
     border-radius: 6px;
     padding: 4px 10px;
     max-width: 280px;
+    white-space: pre-line;
     word-break: break-word;
     opacity: 0;
     transition: opacity 0.15s ease;

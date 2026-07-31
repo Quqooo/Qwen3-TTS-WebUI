@@ -105,19 +105,19 @@ def _find_first_base_model_id() -> str:
 
 @router.post("/voices/audio/{name:path}")
 async def preview_voice_audio(name: str, body: VoiceAudioPreviewRequest):
-    """解码音色文件的参考音频预览"""
+    """解码音色文件的参考音频预览
+
+    优先使用空闲的 Base 模型实例（空闲 GPU 上的实例优先）；
+    load=true 时仅在无已加载 Base 模型的情况下才新加载。
+    """
     full_path = voice_manager.resolve_voice_file(name)
     if not full_path:
         raise_error(status_code=404, detail=f"Voice not found: {name}")
 
     cm = get_cache_manager()
-    model_id = ""
-
-    cached = await cm.cached_models()
-    for entry in cached.get("loaded", []):
-        if entry.get("kind") == "base":
-            model_id = entry["id"]
-            break
+    picked = await cm.pick_loaded_instance("base")
+    model_id = picked[0] if picked else ""
+    gpu = picked[1] if picked else None
 
     if not model_id:
         if body.load:
@@ -125,16 +125,19 @@ async def preview_voice_audio(name: str, body: VoiceAudioPreviewRequest):
             if not model_id:
                 raise_error(status_code=400, detail="No Base model available")
             await cm.load_model(model_id, "base")
+            picked = await cm.pick_loaded_instance("base")
+            gpu = picked[1] if picked else None
         else:
             return {"ok": True}
 
     model_path = resolve_model_path(model_id)
     try:
-        result = await cm.branch.voice_get_preview(full_path, model_path)
+        result = await cm.branch.voice_get_preview(full_path, model_path, gpu_id=gpu)
     except NotSupportedError as e:
         raise_error(status_code=400, detail="Operation not supported", debug=str(e))
     except RuntimeError as e:
         raise_error(status_code=500, detail="Audio decoding failed", debug=str(e))
+    await cm.touch_model(model_id, gpu)
     if result and result.get("ok"):
         return result
     raise_error(status_code=500, detail="Audio decoding failed")

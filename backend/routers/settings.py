@@ -3,7 +3,7 @@ import asyncio
 from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, StrictInt
-from ..config import settings, save_settings
+from ..config import parse_gpu_devices, settings, save_settings
 from ..branches import discover_branches
 from ..errors import raise_error
 
@@ -59,8 +59,10 @@ def _validate_branch(value: str) -> str:
 
 class SettingsUpdate(BaseModel):
     """设置更新请求体"""
+    gpu_devices: str | None = None
     max_concurrent_models: int | None = Field(None, ge=_MIN_CONCURRENT, le=_MAX_CONCURRENT_MODELS)
     idle_unload_seconds: int | None = Field(None, ge=_MIN_IDLE_UNLOAD, le=_MAX_IDLE_UNLOAD)
+    worker_idle_unload_seconds: int | None = Field(None, ge=_MIN_IDLE_UNLOAD, le=_MAX_IDLE_UNLOAD)
     backend_branch: str | None = None
     project_dir: str | None = None
     env_dir: str | None = None
@@ -83,6 +85,11 @@ async def update_settings(data: SettingsUpdate):
     """更新服务端配置"""
     data_dict = data.model_dump(exclude_none=True)
 
+    if "gpu_devices" in data_dict:
+        try:
+            parse_gpu_devices(data_dict["gpu_devices"])
+        except ValueError as e:
+            raise_error(status_code=400, detail="Invalid gpu_devices format", debug=str(e))
     if "backend_branch" in data_dict:
         _validate_branch(data_dict["backend_branch"])
     if "project_dir" in data_dict:
@@ -107,7 +114,7 @@ async def update_settings(data: SettingsUpdate):
     if branch_changed or project_changed or max_seq_len_changed:
         from ..cache import get_cache_manager
         cm = get_cache_manager()
-        await cm.worker_stop()
+        await cm.worker_stop(stop_all=True)
         cm._branch = None
         from ..branches import clear_branch_cache
         clear_branch_cache()

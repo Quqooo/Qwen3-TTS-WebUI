@@ -9,6 +9,7 @@ import struct
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from typing import AsyncGenerator, Deque, IO, List, Optional
 
@@ -21,10 +22,20 @@ _WORKER_SCRIPT = os.path.abspath(
 
 
 class WorkerProcess:
-    """Manage a unified worker and its main, detached, and stream connections."""
+    """Manage a unified worker and its main, detached, and stream connections.
 
-    def __init__(self, provider_file: str, logger: Optional[logging.Logger] = None):
+    Each worker is bound to a single GPU via CUDA_VISIBLE_DEVICES injected
+    into the subprocess environment.
+    """
+
+    def __init__(
+        self,
+        provider_file: str,
+        logger: Optional[logging.Logger] = None,
+        gpu_id: str = "0",
+    ):
         self.provider_file = os.path.abspath(provider_file)
+        self.gpu_id = str(gpu_id)
         self._logger = logger or logging.getLogger("qwen-webui.worker-client")
         self._process: Optional[subprocess.Popen] = None
         self._reader: Optional[asyncio.StreamReader] = None
@@ -37,6 +48,16 @@ class WorkerProcess:
         self._startup_stdout: Deque[str] = deque(maxlen=1)
         self._active_requests: set[str] = set()
         self._active_requests_changed = asyncio.Condition()
+        # 最近一次任意命令活动的时间戳（含音色元数据读取），
+        # 供 Worker 空闲超时停止策略使用。
+        self.last_activity: float = time.monotonic()
+
+    def touch_activity(self) -> None:
+        self.last_activity = time.monotonic()
+
+    @property
+    def pid(self) -> Optional[int]:
+        return self._process.pid if self._process is not None else None
 
     @property
     def error(self) -> Optional[str]:
@@ -132,6 +153,8 @@ class WorkerProcess:
 
         self._stderr_tail.clear()
         self._startup_stdout.clear()
+        env = dict(os.environ)
+        env["CUDA_VISIBLE_DEVICES"] = self.gpu_id
         try:
             self._process = subprocess.Popen(
                 [
@@ -147,6 +170,7 @@ class WorkerProcess:
                 encoding="utf-8",
                 errors="replace",
                 bufsize=1,
+                env=env,
             )
             if self._process.stderr:
                 self._start_output_forwarder(self._process.stderr, self._stderr_tail)
@@ -163,8 +187,10 @@ class WorkerProcess:
                 raise RuntimeError("worker health check failed")
 
             self._error = None
+            self.touch_activity()
             self._logger.info(
-                "Worker started (pid=%d, port=%d, provider=%s)",
+                "Worker started (gpu=%s, pid=%d, port=%d, provider=%s)",
+                self.gpu_id,
                 self._process.pid,
                 port,
                 self.provider_file,
@@ -307,6 +333,7 @@ class WorkerProcess:
         async with self._lock:
             if self._reader is None or self._writer is None:
                 return None
+            self.touch_activity()
             try:
                 await self._write_command(self._writer, cmd, timeout)
                 return await self._read_response(self._reader, timeout)
@@ -354,6 +381,7 @@ class WorkerProcess:
     ) -> Optional[dict]:
         if not self._port:
             return None
+        self.touch_activity()
         request_id = await self._register_request()
         writer: Optional[asyncio.StreamWriter] = None
         response_task: Optional[asyncio.Task] = None
@@ -402,6 +430,7 @@ class WorkerProcess:
     ) -> AsyncGenerator[dict, None]:
         if not self._port:
             return
+        self.touch_activity()
         request_id = await self._register_request()
         model_path = cmd.get("model_path", "")
         completed = False

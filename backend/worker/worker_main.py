@@ -12,8 +12,9 @@ import sys
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 
 # Direct script execution only places backend/worker on sys.path. Providers use
 # canonical backend.worker imports, so make the repository package visible first.
@@ -30,6 +31,60 @@ from backend.worker.provider import ProviderNotSupportedError, WorkerProvider, l
 
 logging.basicConfig(level=logging.INFO, format="[QwenWorker] %(asctime)s %(levelname)s: %(message)s", datefmt="%H:%M:%S")
 _logger = logging.getLogger("qwen-worker")
+
+
+class _AsyncRWLock:
+    """Worker（GPU）级读写锁。
+
+    CUDA 流捕获（CUDA graph capture）在全局捕获模式下禁止进程内任何其他
+    线程发起 CUDA 调用（operation not permitted when stream is capturing）。
+    因此同一 Worker（同一 GPU）内：
+    - 模型加载/卸载（含 warmup 捕获与显存释放）为独占写；
+    - 推理/预览等模型操作共享读（不同模型之间可并行）；
+    写优先：有写者等待时新读者排队，避免加载请求被持续推理饿死。
+
+    全局锁序约定：gpu_lock → lifecycle_lock → operation_lock，
+    任何路径不得反向获取，避免死锁。
+    """
+
+    def __init__(self) -> None:
+        self._cond = asyncio.Condition()
+        self._readers = 0
+        self._writer = False
+        self._writers_waiting = 0
+
+    @asynccontextmanager
+    async def read(self) -> AsyncIterator[None]:
+        async with self._cond:
+            await self._cond.wait_for(
+                lambda: not self._writer and self._writers_waiting == 0
+            )
+            self._readers += 1
+        try:
+            yield
+        finally:
+            async with self._cond:
+                self._readers -= 1
+                if self._readers == 0:
+                    self._cond.notify_all()
+
+    @asynccontextmanager
+    async def write(self) -> AsyncIterator[None]:
+        async with self._cond:
+            self._writers_waiting += 1
+            try:
+                await self._cond.wait_for(
+                    lambda: not self._writer and self._readers == 0
+                )
+            finally:
+                self._writers_waiting -= 1
+            self._writer = True
+        try:
+            yield
+        finally:
+            async with self._cond:
+                self._writer = False
+                self._cond.notify_all()
 
 
 @dataclass
@@ -76,10 +131,21 @@ class WorkerServer:
     def __init__(self, provider: WorkerProvider):
         self.state = WorkerState(provider)
         self._lifecycle_lock = asyncio.Lock()
+        # GPU 级读写锁：加载/卸载（含 CUDA graph 捕获）独占，推理共享
+        self._gpu_lock = _AsyncRWLock()
+        # 音色文件 I/O 专用线程池：torch.load/save 不经过模型线程，
+        # 多条音色请求互不阻塞，也不阻塞 Worker 事件循环。
+        self._voice_io_executor = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="qwen-voice-io"
+        )
 
     async def _in_model_thread(self, model_path: str, function: Any, *args: Any) -> Any:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.state.executor(model_path), function, *args)
+
+    async def _in_voice_io_thread(self, function: Any, *args: Any) -> Any:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._voice_io_executor, function, *args)
 
     async def _unload_locked(self, model_path: str, reason: str) -> Dict[str, Any]:
         async with self.state.operation_lock(model_path):
@@ -121,8 +187,10 @@ class WorkerServer:
             return result
 
     async def _unload(self, model_path: str, reason: str = "requested") -> Dict[str, Any]:
-        async with self._lifecycle_lock:
-            return await self._unload_locked(model_path, reason)
+        # 独占写：卸载涉及显存释放，须等待捕获与其他推理全部完成
+        async with self._gpu_lock.write():
+            async with self._lifecycle_lock:
+                return await self._unload_locked(model_path, reason)
 
     async def _with_model(self, model_path: str, function: Any) -> Dict[str, Any]:
         async with self.state.operation_lock(model_path):
@@ -151,15 +219,11 @@ class WorkerServer:
             async with self.state.operation_lock(data["model_path"]):
                 return {"ok": True}
         if cmd == "load_voice_meta":
-            return read_voice_meta(data["voice_file_path"])
+            return await self._in_voice_io_thread(read_voice_meta, data["voice_file_path"])
         if cmd == "save_voice":
-            return self._save_voice(data)
+            return await self._in_voice_io_thread(self._save_voice, data)
         if cmd == "update_voice_meta":
-            try:
-                path = update_voice_meta(data["voice_file_path"], data.get("item_updates"))
-                return {"ok": True, "path": path}
-            except Exception as exc:
-                return {"ok": False, "error": str(exc)}
+            return await self._in_voice_io_thread(self._update_voice_meta, data)
 
         methods = {
             "generate_voice_clone": self.state.provider.generate_voice_clone,
@@ -205,16 +269,22 @@ class WorkerServer:
             result = await self._in_model_thread(model_path, generate)
             return make_audio_result(result)
 
-        return await self._with_model(model_path, execute)
+        # 共享读：推理/预览/选项查询可跨模型并行，但须避开加载/卸载的捕获窗口
+        async with self._gpu_lock.read():
+            return await self._with_model(model_path, execute)
 
     async def _load_model(self, data: Dict[str, Any]) -> Dict[str, Any]:
         path = data["model_path"]
         kind = data.get("model_kind", "base")
-        async with self._lifecycle_lock:
-            for cached_path, cached_kind in list(self.state.kinds.items()):
-                if cached_kind != kind:
-                    await self._unload_locked(cached_path, "kind mismatch")
+        # 独占写：加载（含 CUDA graph warmup 捕获）期间，本 Worker 内任何
+        # 其他 CUDA 调用都会失败，必须等待所有推理完成、且阻塞新推理进入
+        async with self._gpu_lock.write():
+            return await self._load_model_locked(data, path, kind)
 
+    async def _load_model_locked(self, data: Dict[str, Any], path: str, kind: str) -> Dict[str, Any]:
+        async with self._lifecycle_lock:
+            # 允许不同 kind 的模型共存于同一 Worker；
+            # 是否混载由主进程的 GPU 候选策略控制（混载为最低优先级）。
             async with self.state.operation_lock(path):
                 if path in self.state.models:
                     self.state.last_used[path] = time.monotonic()
@@ -267,6 +337,13 @@ class WorkerServer:
             request["voice_clone_prompt"] = self.state.provider.deserialize_voice_items(payload.get("items", []))
         return request
 
+    def _update_voice_meta(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            path = update_voice_meta(data["voice_file_path"], data.get("item_updates"))
+            return {"ok": True, "path": path}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def _save_voice(self, data: Dict[str, Any]) -> Dict[str, Any]:
         try:
             items = []
@@ -302,43 +379,46 @@ class WorkerServer:
         capability, method = mapping[command]
         self._require_capability(capability)
         path = data["model_path"]
-        async with self.state.operation_lock(path):
-            model = self.state.model(path)
-            if model is None:
-                await send_json(writer, {"ok": False, "error": f"Model not loaded: {path}"})
-                return
+        # 共享读（整个流式会话期间持有）：加载/卸载的捕获窗口须等待流结束；
+        # 锁序 gpu_lock → operation_lock，与其他路径保持一致
+        async with self._gpu_lock.read():
+            async with self.state.operation_lock(path):
+                model = self.state.model(path)
+                if model is None:
+                    await send_json(writer, {"ok": False, "error": f"Model not loaded: {path}"})
+                    return
 
-            def create_generator() -> Any:
-                return method(model, self._request(data))
+                def create_generator() -> Any:
+                    return method(model, self._request(data))
 
-            started = time.monotonic()
-            generator = await self._in_model_thread(path, create_generator)
-            chunk_count = 0
-            _logger.info(
-                "Streaming started: provider=%s model=%s text_chars=%d",
-                self.state.provider.provider_id,
-                os.path.basename(path),
-                len(data.get("text", "")),
-            )
-            try:
-                while True:
-                    present, item = await self._in_model_thread(path, next_stream_item, generator)
-                    if not present:
-                        break
-                    chunk_count += 1
-                    await send_json(writer, make_stream_chunk(item))
-                    if chunk_count == 1:
-                        _logger.info("Streaming first chunk: %.2fs", time.monotonic() - started)
-                await send_json(writer, {"type": "done"})
-                self.state.last_used[path] = time.monotonic()
+                started = time.monotonic()
+                generator = await self._in_model_thread(path, create_generator)
+                chunk_count = 0
                 _logger.info(
-                    "Streaming completed: provider=%s elapsed=%.2fs chunks=%d",
+                    "Streaming started: provider=%s model=%s text_chars=%d",
                     self.state.provider.provider_id,
-                    time.monotonic() - started,
-                    chunk_count,
+                    os.path.basename(path),
+                    len(data.get("text", "")),
                 )
-            finally:
-                await self._in_model_thread(path, close_stream, generator)
+                try:
+                    while True:
+                        present, item = await self._in_model_thread(path, next_stream_item, generator)
+                        if not present:
+                            break
+                        chunk_count += 1
+                        await send_json(writer, make_stream_chunk(item))
+                        if chunk_count == 1:
+                            _logger.info("Streaming first chunk: %.2fs", time.monotonic() - started)
+                    await send_json(writer, {"type": "done"})
+                    self.state.last_used[path] = time.monotonic()
+                    _logger.info(
+                        "Streaming completed: provider=%s elapsed=%.2fs chunks=%d",
+                        self.state.provider.provider_id,
+                        time.monotonic() - started,
+                        chunk_count,
+                    )
+                finally:
+                    await self._in_model_thread(path, close_stream, generator)
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
@@ -371,6 +451,7 @@ class WorkerServer:
             except Exception:
                 _logger.error("Failed to release model during shutdown: %s", model_path, exc_info=True)
         self.state.shutdown()
+        self._voice_io_executor.shutdown(wait=False)
 
 
 STREAM_COMMANDS = {

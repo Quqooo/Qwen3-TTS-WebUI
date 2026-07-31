@@ -1,8 +1,10 @@
 import { api } from "./client"
 
 export interface ServerSettings {
+  gpu_devices: string
   max_concurrent_models: number
   idle_unload_seconds: number
+  worker_idle_unload_seconds: number
   backend_branch: string
   backend_branch_options: string[]
   project_dir: string

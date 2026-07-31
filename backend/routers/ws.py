@@ -86,10 +86,14 @@ async def broadcast_worker_status():
 
 async def _build_tracker_message():
     tracker = get_tracker()
+    per_model = tracker.status()
     return _encode({
         "type": "tracker",
         "data": {
-            "inference_counts": dict(tracker._inference_counts),
+            "inference_counts": {
+                mid: sum(gpu_counts.values()) for mid, gpu_counts in per_model.items()
+            },
+            "inference_gpus": per_model,
             "inference_total": tracker.inference_count,
         },
     })

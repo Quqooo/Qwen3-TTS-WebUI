@@ -40,11 +40,14 @@ class TTSBranch(ABC):
     # ── 模型生命周期管理 ────────────────────────────────────────
 
     @abstractmethod
-    def load_model(self, model_path: str, model_kind: str, load_kwargs: Optional[Dict[str, Any]] = None) -> None:
+    def load_model(self, model_path: str, model_kind: str, load_kwargs: Optional[Dict[str, Any]] = None,
+                   gpu_id: Optional[str] = None) -> None:
+        """加载模型；gpu_id 指定目标 GPU（None 时由实现按优先级选择）"""
         ...
 
     @abstractmethod
-    def unload_model(self, model_path: str) -> None:
+    def unload_model(self, model_path: str, gpu_id: Optional[str] = None) -> None:
+        """卸载模型；gpu_id 指定卸载单个实例，None 卸载全部实例"""
         ...
 
     @abstractmethod
@@ -59,34 +62,35 @@ class TTSBranch(ABC):
     def get_supported_options(self, model_path: str) -> Dict[str, Any]:
         ...
 
-    async def wait_model_stoppable(self, model_path: str) -> None:
+    async def wait_model_stoppable(self, model_path: str, gpu_id: Optional[str] = None) -> None:
         """Wait until the current model operation reaches a safe stop point.
 
         In-process implementations may override this when their inference engine
         has an explicit non-interruptible phase. Worker-based implementations
         use the worker model lock as the safety boundary.
+        gpu_id 指定等待单个实例，None 等待全部实例。
         """
 
     # ── Worker 生命周期管理 ─────────────────────────────────────
 
     @abstractmethod
-    def worker_start(self) -> None:
-        """启动 Worker 子进程，失败时抛出异常"""
+    def worker_start(self, gpu_id: Optional[str] = None) -> None:
+        """启动 Worker 子进程；gpu_id 指定 GPU，None 按优先级启动第一个未运行的"""
         ...
 
     @abstractmethod
-    def worker_stop(self) -> None:
+    def worker_stop(self, gpu_id: Optional[str] = None, stop_all: bool = False) -> None:
         """等待不可中断操作到达安全边界后停止 Worker 子进程。"""
         ...
 
     @abstractmethod
-    def worker_force_stop(self) -> None:
+    def worker_force_stop(self, gpu_id: Optional[str] = None, stop_all: bool = False) -> None:
         """立即终止 Worker 子进程，不等待推理到达安全边界。"""
         ...
 
     @abstractmethod
     def worker_status(self) -> Dict[str, Any]:
-        """返回 Worker 运行状态"""
+        """返回 Worker 运行状态（含各 GPU 的 workers 数组）"""
         ...
 
     # ── 生成接口 ────────────────────────────────────────────────

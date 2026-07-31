@@ -1,41 +1,65 @@
 """
 推理任务引用计数器
 
-跟踪所有模型正在进行的推理任务数量，供缓存淘汰逻辑使用
-并发控制由 synthesis.py 的 asyncio.Semaphore 负责。
+按 模型 × GPU 两个维度跟踪正在进行的推理任务数量，
+供缓存淘汰逻辑与多卡负载均衡使用。
 """
 import asyncio
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 _logger = logging.getLogger("qwen-webui.tracker")
 
 
 class ModelWorkTracker:
     def __init__(self):
-        self._inference_counts: Dict[str, int] = {}
+        # model_id -> gpu_id -> 进行中任务数
+        self._inference_counts: Dict[str, Dict[str, int]] = {}
         self._inference_total = 0
         self._lock = asyncio.Lock()
 
-    async def acquire_inference(self, model_id: str) -> None:
+    async def acquire_inference(self, model_id: str, gpu: str = "0") -> None:
         async with self._lock:
-            self._inference_counts[model_id] = self._inference_counts.get(model_id, 0) + 1
+            per_gpu = self._inference_counts.setdefault(model_id, {})
+            per_gpu[gpu] = per_gpu.get(gpu, 0) + 1
             self._inference_total += 1
 
-    async def release_inference(self, model_id: str) -> None:
+    async def release_inference(self, model_id: str, gpu: str = "0") -> None:
         async with self._lock:
-            cnt = self._inference_counts.get(model_id, 0)
-            if cnt > 1:
-                self._inference_counts[model_id] = cnt - 1
-            else:
-                self._inference_counts.pop(model_id, None)
+            per_gpu = self._inference_counts.get(model_id)
+            if per_gpu:
+                cnt = per_gpu.get(gpu, 0)
+                if cnt > 1:
+                    per_gpu[gpu] = cnt - 1
+                else:
+                    per_gpu.pop(gpu, None)
+                if not per_gpu:
+                    self._inference_counts.pop(model_id, None)
             self._inference_total = max(0, self._inference_total - 1)
 
-    def is_busy(self, model_id: str) -> bool:
-        return self._inference_counts.get(model_id, 0) > 0
+    def is_busy(self, model_id: str, gpu: Optional[str] = None) -> bool:
+        per_gpu = self._inference_counts.get(model_id)
+        if not per_gpu:
+            return False
+        if gpu is not None:
+            return per_gpu.get(gpu, 0) > 0
+        return any(cnt > 0 for cnt in per_gpu.values())
 
-    async def wait_idle(self, model_id: str) -> None:
-        while self.is_busy(model_id):
+    def model_count(self, model_id: str, gpu: Optional[str] = None) -> int:
+        """指定模型（可选限定 GPU）进行中的任务数"""
+        per_gpu = self._inference_counts.get(model_id)
+        if not per_gpu:
+            return 0
+        if gpu is not None:
+            return per_gpu.get(gpu, 0)
+        return sum(per_gpu.values())
+
+    def gpu_count(self, gpu: str) -> int:
+        """指定 GPU 上所有模型进行中的任务总数"""
+        return sum(per_gpu.get(gpu, 0) for per_gpu in self._inference_counts.values())
+
+    async def wait_idle(self, model_id: str, gpu: Optional[str] = None) -> None:
+        while self.is_busy(model_id, gpu):
             await asyncio.sleep(0.5)
 
     async def wait_any_idle(self) -> None:
@@ -44,6 +68,10 @@ class ModelWorkTracker:
     @property
     def inference_count(self) -> int:
         return self._inference_total
+
+    def status(self) -> Dict[str, Dict[str, int]]:
+        """返回 {model_id: {gpu_id: count}} 快照"""
+        return {mid: dict(per_gpu) for mid, per_gpu in self._inference_counts.items()}
 
 
 # 全局单例

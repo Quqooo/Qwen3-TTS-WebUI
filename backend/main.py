@@ -23,7 +23,6 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.staticfiles import StaticFiles
 
 from .cache import idle_cleanup_loop
@@ -216,14 +215,30 @@ if not _is_dev and _frontend_dist.is_dir():
     _static_app = StaticFiles(directory=str(_frontend_dist))
     app.mount("/", _static_app, name="static")
 
-    class _SPAMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):
-            response = await call_next(request)
-            if response.status_code == 404 and not request.url.path.startswith("/api"):
-                index = _frontend_dist / "index.html"
-                if index.is_file():
-                    return FileResponse(index)
-            return response
+    class _SPAMiddleware:
+        def __init__(self, app):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            path = scope.get("path", "")
+            if path.startswith("/api"):
+                await self.app(scope, receive, send)
+                return
+
+            async def _send(message):
+                if message["type"] == "http.response.start" and message["status"] == 404:
+                    index = _frontend_dist / "index.html"
+                    if index.is_file():
+                        response = FileResponse(str(index))
+                        await response(scope, receive, send)
+                        return
+                await send(message)
+
+            await self.app(scope, receive, _send)
 
     app.add_middleware(_SPAMiddleware)
 

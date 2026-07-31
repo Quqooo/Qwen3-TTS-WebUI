@@ -27,7 +27,6 @@ from ..cache import get_cache_manager
 from ..config import require_qwen, resolve_model_path
 from ..errors import APIError, raise_error
 from ..routers.ws import broadcast_cache_status, broadcast_tracker_status
-from ..tracker import get_tracker
 from ..voices import manager as voice_manager
 
 router = APIRouter(prefix="/api", tags=["synthesis"], dependencies=[Depends(require_qwen)])
@@ -152,8 +151,9 @@ async def _do_synthesize(body: SynthesisRequest):
         raise_error(status_code=400, detail="Failed to resolve model path", debug=str(e))
 
     kind = body.kind
+    # 分配模型实例（多卡自动并行：空闲实例 → 并行加载新实例 → 均分队列）
     try:
-        await cache.load_model(body.model, kind)
+        lease = await cache.acquire_model(body.model, kind)
     except Exception as e:
         raise_error(status_code=500, detail="Failed to load model", debug=str(e))
 
@@ -164,29 +164,28 @@ async def _do_synthesize(body: SynthesisRequest):
         model_path=model_path,
         language=body.language,
         generation_params=gen_params,
+        lease=lease,
     )
 
     tbl = cache.branch
     async def touch():
-        await cache.touch_model(body.model)
-    tracker = get_tracker()
+        await cache.touch_model(body.model, lease.gpu)
     tracker_owned_by_response = False
-    tracker_released = False
-    tracker_release_lock = asyncio.Lock()
+    lease_released = False
+    lease_release_lock = asyncio.Lock()
 
     async def release_tracker(*, wait_stoppable: bool = False) -> None:
-        nonlocal tracker_released
-        async with tracker_release_lock:
-            if tracker_released:
+        nonlocal lease_released
+        async with lease_release_lock:
+            if lease_released:
                 return
             if wait_stoppable:
-                await tbl.wait_model_stoppable(model_path)
-            await tracker.release_inference(body.model)
-            tracker_released = True
+                await lease.wait_stoppable()
+            await lease.release()
+            lease_released = True
             asyncio.create_task(broadcast_tracker_status())
             asyncio.create_task(broadcast_cache_status())
 
-    await tracker.acquire_inference(body.model)
     asyncio.create_task(broadcast_tracker_status())
     try:
         if kind == "base":
@@ -216,7 +215,7 @@ async def _do_synthesize(body: SynthesisRequest):
         # The HTTP request may be cancelled while the worker's synchronous model
         # thread is still inside a non-interruptible inference step. Keep the
         # tracker busy until that step reaches the worker model-lock boundary.
-        wait_task = asyncio.create_task(tbl.wait_model_stoppable(model_path))
+        wait_task = asyncio.create_task(lease.wait_stoppable())
         while not wait_task.done():
             try:
                 await asyncio.shield(wait_task)
@@ -357,6 +356,7 @@ async def _handle_base_synthesis(
             "overlap_samples": body.overlap_samples,
             "max_frames": body.max_frames,
             "generation_params": gen_kwargs.get("generation_params"),
+            "lease": gen_kwargs.get("lease"),
         }
         if voice_file_path:
             stream_kwargs["voice_file"] = voice_file_path
@@ -430,6 +430,7 @@ async def _handle_custom_voice_synthesis(
                 overlap_samples=body.overlap_samples,
                 max_frames=body.max_frames,
                 generation_params=gen_kwargs.get("generation_params"),
+                lease=gen_kwargs.get("lease"),
             ),
             body, fmt, touch_model=touch_model, finish_stream=finish_stream,
         )
@@ -473,6 +474,7 @@ async def _handle_voice_design_synthesis(
                 overlap_samples=body.overlap_samples,
                 max_frames=body.max_frames,
                 generation_params=gen_kwargs.get("generation_params"),
+                lease=gen_kwargs.get("lease"),
             ),
             body, fmt, touch_model=touch_model, finish_stream=finish_stream,
         )

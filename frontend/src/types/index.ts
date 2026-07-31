@@ -15,19 +15,40 @@ export interface ModelInfo {
   kind: ModelKind
 }
 
+export interface ModelCacheEntry {
+  id: string
+  gpu: string
+  kind: ModelKind
+  last_used: number
+  meta: ModelMeta
+}
+
 export interface ModelCacheStatus {
-  loaded: { id: string; kind: ModelKind; last_used: number; meta: ModelMeta }[]
+  loaded: ModelCacheEntry[]
   max_concurrent: number
-  usage_order: string[]
+  usage_order: { id: string; gpu: string }[]
+}
+
+export interface WorkerGpuStatus {
+  gpu: string
+  alive: boolean
+  error: string | null
+  pid: number | null
+  models: string[]
+  inflight: number
+  last_activity: number | null
 }
 
 export interface WorkerStatus {
   alive: boolean
   error: string | null
+  gpus?: string[]
+  workers?: WorkerGpuStatus[]
 }
 
 export interface TrackerStatus {
   inference_counts: Record<string, number>
+  inference_gpus: Record<string, Record<string, number>>
   inference_total: number
 }
 

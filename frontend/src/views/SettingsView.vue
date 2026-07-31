@@ -13,8 +13,10 @@ import Skeleton from "../components/common/Skeleton.vue"
 import { t } from "../lang"
 
 interface SettingsData {
+  gpuDevices: string
   maxConcurrent: number
   idleTimeout: number
+  workerIdleTimeout: number
   backendBranch: string
   backendBranchOptions: string[]
   projectDir: string
@@ -27,8 +29,10 @@ interface SettingsData {
 let settingsCache: SettingsData | null = null
 
 function applySettings(data: SettingsData) {
+  gpuDevices.value = data.gpuDevices
   maxConcurrent.value = data.maxConcurrent
   idleTimeout.value = data.idleTimeout
+  workerIdleTimeout.value = data.workerIdleTimeout
   backendBranch.value = data.backendBranch
   backendBranchOptions.value = data.backendBranchOptions
   projectDir.value = data.projectDir
@@ -47,10 +51,23 @@ const { defaultParams, globalVolume } = useUserConfig()
 const modelStore = useModelStore()
 
 const loading = ref(true)
+const gpuDevices = ref("")
 const maxConcurrent = ref(0)
 const idleTimeout = ref(0)
+const workerIdleTimeout = ref(0)
 const { success: toastSuccess } = useToast()
-const inferenceCounts = ref<Record<string, number>>({})
+const inferenceGpus = ref<Record<string, Record<string, number>>>({})
+
+// 推理队列展示行：模型 × GPU 实例
+const inferenceRows = computed(() => {
+  const rows: { id: string; gpu: string; count: number }[] = []
+  for (const [mid, gpus] of Object.entries(inferenceGpus.value)) {
+    for (const [gpu, count] of Object.entries(gpus)) {
+      if (count > 0) rows.push({ id: mid, gpu, count })
+    }
+  }
+  return rows
+})
 
 const backendBranch = ref("")
 const backendBranchOptions = ref<string[]>([])
@@ -66,13 +83,13 @@ const isFasterBranch = computed(() => backendBranch.value === "andimarafioti/fas
 
 const selectedKind = ref<ModelKind>("base")
 
-const loadedModels = computed(() => {
+// 缓存实例行：usage_order 提供 {id, gpu} 顺序；缺失时回退 loaded
+const loadedInstances = computed(() => {
   const order = modelStore.cacheStatus.usage_order ?? []
   if (order.length) return order
-  return modelStore.cacheStatus.loaded.map((m) => m.id)
+  return modelStore.cacheStatus.loaded.map((m) => ({ id: m.id, gpu: m.gpu }))
 })
-const loadedModelIds = computed(() => loadedModels.value)
-const loadedCount = computed(() => loadedModels.value.length)
+const loadedCount = computed(() => loadedInstances.value.length)
 
 const kindOptions = computed(() => [
   { value: "base" as ModelKind, label: t('views.settings.tabBase') },
@@ -83,8 +100,10 @@ const kindOptions = computed(() => [
 async function saveSettings() {
   try {
     const res = await settingsApi.update({
+      gpu_devices: gpuDevices.value,
       max_concurrent_models: maxConcurrent.value,
       idle_unload_seconds: idleTimeout.value,
+      worker_idle_unload_seconds: workerIdleTimeout.value,
       backend_branch: backendBranch.value,
       project_dir: projectDir.value,
       env_dir: envDir.value,
@@ -93,8 +112,10 @@ async function saveSettings() {
       max_seq_len: maxSeqLen.value,
     })
     settingsCache = {
+      gpuDevices: res.gpu_devices,
       maxConcurrent: res.max_concurrent_models,
       idleTimeout: res.idle_unload_seconds,
+      workerIdleTimeout: res.worker_idle_unload_seconds,
       backendBranch: res.backend_branch,
       backendBranchOptions: res.backend_branch_options,
       projectDir: res.project_dir,
@@ -110,8 +131,8 @@ async function saveSettings() {
 
 async function refreshInferenceStatus() {
   try {
-    const res = await api.get<{ inference_counts: Record<string, number> }>("/tracker/status")
-    inferenceCounts.value = res.inference_counts ?? {}
+    const res = await api.get<{ inference_gpus: Record<string, Record<string, number>> }>("/tracker/status")
+    inferenceGpus.value = res.inference_gpus ?? {}
   } catch {
     // ignore
   }
@@ -155,8 +176,10 @@ onMounted(async () => {
       refreshInferenceStatus(),
     ])
     const data: SettingsData = {
+      gpuDevices: s.gpu_devices ?? "0",
       maxConcurrent: s.max_concurrent_models,
       idleTimeout: s.idle_unload_seconds,
+      workerIdleTimeout: s.worker_idle_unload_seconds ?? 600,
       backendBranch: s.backend_branch,
       backendBranchOptions: s.backend_branch_options,
       projectDir: s.project_dir,
@@ -244,13 +267,23 @@ onMounted(async () => {
                 <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{{ $t('views.settings.globalConfig') }}</h2>
                 <p class="text-[10px] text-muted-foreground -mt-3">{{ $t('views.settings.globalConfigHint') }}</p>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-2 gap-4 min-h-[26rem]">
                   <!-- Left: 模型缓存 -->
-                  <div class="border rounded-xl p-4 space-y-4 bg-card h-full">
+                   <div class="border rounded-xl p-4 space-y-4 bg-card h-full">
                       <h3 class="text-sm font-medium flex items-center gap-2">
                         <Info class="w-4 h-4 text-muted-foreground" /> {{ $t('views.settings.modelCache') }}
                       </h3>
                       <div class="space-y-3">
+                        <div class="space-y-1.5">
+                          <label class="text-xs text-muted-foreground">{{ $t('views.settings.gpuDevices') }}</label>
+                          <input
+                            v-model="gpuDevices"
+                            type="text"
+                            class="w-full px-3 py-2 text-sm"
+                            :placeholder="$t('views.settings.gpuDevicesPlaceholder')"
+                          />
+                          <p class="text-[10px] text-muted-foreground">{{ $t('views.settings.gpuDevicesHint') }}</p>
+                        </div>
                         <div class="space-y-1.5">
                           <label class="text-xs text-muted-foreground">{{ $t('views.settings.maxConcurrent') }}</label>
                           <input
@@ -262,10 +295,15 @@ onMounted(async () => {
                           />
                           <p class="text-[10px] text-muted-foreground">{{ $t('views.settings.maxConcurrentHint') }}</p>
                         </div>
-                        <div class="space-y-1.5">
-                          <label class="text-xs text-muted-foreground">{{ $t('views.settings.idleUnload') }}</label>
-                          <input v-model="idleTimeout" type="number" min="0" step="60" class="w-full px-3 py-2 text-sm" />
-                          <p class="text-[10px] text-muted-foreground">{{ $t('views.settings.idleUnloadHint') }}</p>
+                        <div class="flex gap-3">
+                          <div class="flex-1 space-y-1.5">
+                            <label class="text-xs text-muted-foreground">{{ $t('views.settings.idleUnload') }}</label>
+                            <input v-model="idleTimeout" type="number" min="0" step="60" class="w-full px-3 py-2 text-sm" />
+                          </div>
+                          <div class="flex-1 space-y-1.5">
+                            <label class="text-xs text-muted-foreground">{{ $t('views.settings.workerIdleUnload') }}</label>
+                            <input v-model="workerIdleTimeout" type="number" min="0" step="60" class="w-full px-3 py-2 text-sm" />
+                          </div>
                         </div>
                       </div>
                       <div class="border rounded-lg p-3 bg-secondary/20 space-y-2">
@@ -285,18 +323,19 @@ onMounted(async () => {
                         <div v-if="loadedCount === 0" class="text-xs text-muted-foreground">{{ $t('views.settings.noCache') }}</div>
                         <div v-else class="space-y-1 max-h-40 overflow-y-auto">
                           <div
-                            v-for="(mp, idx) in loadedModels"
-                            :key="mp"
+                            v-for="inst in loadedInstances"
+                            :key="`${inst.id}@${inst.gpu}`"
                             class="flex items-center gap-2 py-1 px-1.5 rounded-md hover:bg-secondary/40 transition-colors group"
                           >
+                            <span class="text-xs truncate font-mono" :title="inst.id">{{ inst.id }}</span>
+                            <span class="text-[10px] font-mono text-muted-foreground ml-auto shrink-0">GPU {{ inst.gpu }}</span>
                             <button
                               class="shrink-0 p-0.5 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                               v-tooltip="$t('views.settings.unloadModel')"
-                              @click="unloadModel(loadedModelIds[idx])"
+                              @click="unloadModel(inst.id)"
                             >
                               <XCircle class="w-4 h-4" />
                             </button>
-                            <span class="text-xs truncate font-mono" :title="mp">{{ loadedModelIds[idx] }}</span>
                           </div>
                         </div>
                       </div>
@@ -314,22 +353,22 @@ onMounted(async () => {
                             <RefreshCw class="w-3.5 h-3.5" />
                           </button>
                         </div>
-                        <div v-if="Object.keys(inferenceCounts).length === 0" class="text-xs text-muted-foreground">{{ $t('views.settings.noInference') }}</div>
+                        <div v-if="inferenceRows.length === 0" class="text-xs text-muted-foreground">{{ $t('views.settings.noInference') }}</div>
                         <div v-else class="space-y-1 max-h-40 overflow-y-auto">
                           <div
-                            v-for="(cnt, mid) in inferenceCounts"
-                            :key="mid"
+                            v-for="row in inferenceRows"
+                            :key="`${row.id}@${row.gpu}`"
                             class="flex items-center justify-between py-1 px-1.5 rounded-md"
                           >
-                            <span class="text-xs truncate font-mono">{{ mid }}</span>
-                            <span class="text-xs font-mono tabular-nums ml-2">{{ cnt }}</span>
+                            <span class="text-xs truncate font-mono">{{ row.id }} <span class="text-muted-foreground">(#{{ row.gpu }})</span></span>
+                            <span class="text-xs font-mono tabular-nums ml-2">{{ row.count }}</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
                   <!-- Right: QwenTTS 后端 -->
-                  <div class="border rounded-xl p-4 space-y-4 bg-card h-full">
+                   <div class="border rounded-xl p-4 space-y-4 bg-card">
                     <h3 class="text-sm font-medium flex items-center gap-2">
                       <FolderOpen class="w-4 h-4 text-muted-foreground" /> {{ $t('views.settings.qwenBackend') }}
                     </h3>
@@ -355,7 +394,11 @@ onMounted(async () => {
                         <label class="text-xs text-muted-foreground">{{ $t('views.settings.voiceDir') }}</label>
                         <input v-model="voiceDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.voiceDirPlaceholder')" />
                       </div>
-                      <div v-if="isFasterBranch" class="space-y-1.5 border-t pt-3">
+                      <div
+                        class="space-y-1.5 border-t pt-3"
+                        :class="{ 'invisible pointer-events-none': !isFasterBranch }"
+                        :aria-hidden="!isFasterBranch"
+                      >
                         <label class="text-xs text-muted-foreground">{{ $t('views.settings.maxSeqLen') }}</label>
                         <input
                           v-model.number="maxSeqLen"

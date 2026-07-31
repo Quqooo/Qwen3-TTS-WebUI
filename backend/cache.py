@@ -1,23 +1,28 @@
 """
-统一模型缓存管理模块
+统一模型缓存管理模块（多 GPU 版）
 
 集中管理模型的加载、卸载和缓存策略。所有涉及模型生命周期
-的操作必须通过此模块进行，确保遵守 max_concurrent_models
-限制和 LRU 淘汰策略。
+的操作必须通过此模块进行。
 
-加载/卸载请求通过异步锁串行化处理。
-
-所有公开接口统一使用模型 ID（目录名），ID → 绝对路径的转换
-仅在最终传递给 Worker 子进程时完成。
+多卡模型：
+- 每 GPU 一个 Worker 子进程（由分支的 WorkerPool 管理）
+- 缓存按 模型 × GPU 记录实例，max_concurrent_models 为每 GPU
+  可加载的不同模型数上限（同一 GPU 不允许重复实例）
+- 加载模型按配置的 GPU 优先级选择空 GPU → 未满 GPU →
+  失败降级 → LRU 淘汰（按 Worker 分桶）
+- 推理请求通过 acquire_model() 分配实例：优先空闲实例/空闲 GPU，
+  无空闲实例时自动并行加载新实例，最终均分任务队列
+- 模型空闲超时按实例记录；Worker 空闲超时各自独立
 """
 import asyncio
 import logging
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .branches import get_branch
 from .branches.base import TTSBranch
+from .branches.worker_pool import WorkerPool
 from .config import resolve_model_path, settings
 from .model_meta import cache_model_meta, invalidate_model_meta
 from .tracker import get_tracker
@@ -25,22 +30,57 @@ from .tracker import get_tracker
 _logger = logging.getLogger("qwen-webui.cache")
 
 
+class ModelLease:
+    """一次推理分配到的模型实例租约（模型 × GPU）。
+
+    租约持有期间，实例的推理计数（WorkerPool 与 Tracker）保持 +1；
+    释放后可选择先等待推理到达安全边界（流式中断场景）。
+    """
+
+    def __init__(self, manager: "ModelCacheManager", model_id: str, model_path: str, gpu: str):
+        self._manager = manager
+        self.model_id = model_id
+        self.model_path = model_path
+        self.gpu = gpu
+        self._released = False
+
+    @property
+    def worker(self):
+        return self._manager.pool.worker_for_gpu(self.gpu)
+
+    async def wait_stoppable(self) -> None:
+        try:
+            await self._manager.branch.wait_model_stoppable(self.model_path, gpu_id=self.gpu)
+        except Exception:
+            _logger.debug("wait_stoppable failed for %s on GPU %s", self.model_id, self.gpu, exc_info=True)
+
+    async def release(self, *, wait_stoppable: bool = False) -> None:
+        if self._released:
+            return
+        self._released = True
+        if wait_stoppable:
+            await self.wait_stoppable()
+        self._manager.pool.mark_release(self.model_path, self.gpu)
+        await get_tracker().release_inference(self.model_id, self.gpu)
+
+
 class ModelCacheManager:
-    """统一模型缓存管理器
+    """统一模型缓存管理器（多 GPU）
 
     职责：
-    - 控制模型加载/卸载，遵守 max_concurrent_models 限制
-    - LRU 淘汰：缓存满时淘汰最久未使用的模型
-    - 空闲超时卸载
-    - 与 Worker 子进程中的实际缓存保持同步
+    - 控制模型加载/卸载，遵守每 GPU max_concurrent_models 限制
+    - GPU 优先级放置与失败降级、按 Worker 分桶的 LRU 淘汰
+    - 推理请求实例分配（acquire_model → ModelLease）
+    - 模型实例空闲超时卸载、Worker 空闲超时停止
     """
 
     def __init__(self):
-        self._cache: Dict[str, float] = {}  # model_id -> last_used (monotonic)
+        # model_id -> {gpu_id: last_used (monotonic)}
+        self._cache: Dict[str, Dict[str, float]] = {}
+        self._kinds: Dict[str, str] = {}  # model_id -> kind
         self._lock = asyncio.Lock()
         self._branch: Optional[TTSBranch] = None
-        self._op_lock = asyncio.Lock()  # 串行化加载/卸载操作
-        self._empty_since: Optional[float] = None  # Worker 无模型缓存的起始时间
+        self._op_lock = asyncio.Lock()  # 串行化加载/卸载/分配操作
 
     # ── 内部方法 ─────────────────────────────────────────────
 
@@ -48,6 +88,14 @@ class ModelCacheManager:
         if self._branch is None:
             self._branch = get_branch()
         return self._branch
+
+    @property
+    def pool(self) -> WorkerPool:
+        branch = self._get_branch()
+        pool = getattr(branch, "pool", None)
+        if pool is None:
+            raise RuntimeError(f"Branch {branch.name} does not support GPU worker pool")
+        return pool
 
     @staticmethod
     def _detect_kind(model_id: str) -> str:
@@ -60,63 +108,201 @@ class ModelCacheManager:
             return "voice_design"
         return "base"
 
-    async def _sync_from_worker(self):
+    def _kind_of(self, model_id: str) -> str:
+        return self._kinds.get(model_id) or self._detect_kind(model_id)
+
+    def _last_used(self, model_id: str, gpu: str) -> float:
+        return self._cache.get(model_id, {}).get(gpu, 0.0)
+
+    def _gpu_kind_compatible(self, model_paths, kind: str) -> bool:
+        """GPU 上已有模型是否全部与该模型同 kind（混 kind 同卡允许但优先级最低）"""
+        for path in model_paths:
+            if self._kind_of(os.path.basename(path)) != kind:
+                return False
+        return True
+
+    def _gpu_candidates_locked(self, model_path: str, kind: str) -> List[str]:
+        """可加载该模型的候选 GPU（按优先级）。
+
+        跳过已加载相同模型的 GPU。候选分三档，依次尝试：
+        1. 空 GPU（无模型）
+        2. 未满且已有模型均为同 kind 的 GPU
+        3. 未满但混 kind 的 GPU（允许混载，但优先级最低）
+        2/3 档均需 max_concurrent_models > 1。
+        """
+        pool = self.pool
+        assigned = set(pool.model_gpus(model_path))
+        empty: List[str] = []
+        same_kind: List[str] = []
+        mixed_kind: List[str] = []
+        for gpu in settings.gpu_list():
+            if gpu in assigned:
+                continue
+            models = pool.gpu_models(gpu)
+            if not models:
+                empty.append(gpu)
+            elif len(models) < settings.max_concurrent_models:
+                if self._gpu_kind_compatible(models, kind):
+                    same_kind.append(gpu)
+                else:
+                    mixed_kind.append(gpu)
+        return empty + same_kind + mixed_kind
+
+    async def _register_instance(self, model_id: str, kind: str, gpu: str, *, is_new_model: bool) -> None:
+        async with self._lock:
+            self._cache.setdefault(model_id, {})[gpu] = time.monotonic()
+            self._kinds[model_id] = kind
+        if is_new_model:
+            try:
+                model_path = resolve_model_path(model_id)
+                meta = await self._get_branch().get_supported_options(model_path)
+                cache_model_meta(model_id, meta)
+            except Exception:
+                _logger.warning("Failed to fetch model meta for %s", model_id)
+
+    async def _load_on_gpu(self, model_id: str, kind: str, model_path: str,
+                           gpu: str, load_kwargs: Optional[Dict[str, Any]]) -> None:
+        is_new = model_id not in self._cache
+        await self._get_branch().load_model(model_path, kind, load_kwargs or {}, gpu_id=gpu)
+        await self._register_instance(model_id, kind, gpu, is_new_model=is_new)
+        _logger.info(
+            "Model loaded: %s on GPU %s (instances: %d)",
+            model_id, gpu, len(self._cache.get(model_id, {})),
+        )
+
+    async def _evict_lru_on_gpu(self, gpu: str, reserve_for: Optional[str] = None) -> bool:
+        """淘汰指定 GPU 上最久未使用的空闲模型实例，返回是否成功淘汰。
+
+        仅淘汰完全空闲（Tracker 与 WorkerPool 计数均为 0）的实例，
+        绝不强制卸载正在推理的模型。
+        """
+        pool = self.pool
+        tracker = get_tracker()
+        models = sorted(
+            pool.gpu_models(gpu),
+            key=lambda p: self._last_used(os.path.basename(p), gpu),
+        )
+        for path in models:
+            model_id = os.path.basename(path)
+            if model_id == reserve_for:
+                continue
+            if tracker.is_busy(model_id, gpu):
+                continue
+            if pool.instance_inflight(path, gpu) > 0:
+                continue
+            _logger.info("Evicting LRU model on GPU %s: %s", gpu, model_id)
+            await self._unload_instance(model_id, path, gpu)
+            return True
+        return False
+
+    async def _unload_instance(self, model_id: str, model_path: str, gpu: str) -> None:
+        tracker = get_tracker()
+        await tracker.wait_idle(model_id, gpu)
+        pool = self.pool
+        while pool.instance_inflight(model_path, gpu) > 0:
+            await asyncio.sleep(0.2)
         try:
-            branch = self._get_branch()
-            loaded = await branch.cached_models()
-            loaded_ids = {os.path.basename(p): info for p, info in loaded.items()}
+            await self._get_branch().unload_model(model_path, gpu_id=gpu)
+        except Exception:
+            _logger.warning("Failed to unload %s on GPU %s", model_id, gpu)
+        async with self._lock:
+            instances = self._cache.get(model_id)
+            if instances is not None:
+                instances.pop(gpu, None)
+                if not instances:
+                    self._cache.pop(model_id, None)
+                    self._kinds.pop(model_id, None)
+                    invalidate_model_meta(model_id)
+
+    async def _load_locked(self, model_id: str, kind: str,
+                           load_kwargs: Optional[Dict[str, Any]], *,
+                           evict: bool) -> Optional[str]:
+        """在最佳 GPU 加载模型实例（须持有 _op_lock）。
+
+        依次尝试：空 GPU → 未满 GPU（候选按优先级）→（evict=True 时）
+        按优先级逐 GPU 淘汰空闲 LRU 模型后重试。
+        淘汰只针对空闲模型，绝不强制卸载推理中的模型；
+        无可淘汰且仍有推理任务时，忙等待旧模型推理完成后再试，
+        而不是直接返回失败。返回目标 gpu_id 或 None。
+        """
+        pool = self.pool
+        model_path = resolve_model_path(model_id)
+        candidates = self._gpu_candidates_locked(model_path, kind)
+        errors: List[str] = []
+        for gpu in candidates:
+            try:
+                await self._load_on_gpu(model_id, kind, model_path, gpu, load_kwargs)
+                return gpu
+            except Exception as exc:
+                errors.append(f"GPU {gpu}: {exc}")
+                _logger.warning("Load %s on GPU %s failed: %s", model_id, gpu, exc)
+        if not evict:
+            if errors:
+                _logger.debug("Parallel instance load of %s skipped: %s", model_id, "; ".join(errors))
+            return None
+        # LRU 淘汰路径（忙等待）
+        tracker = get_tracker()
+        assigned = set(pool.model_gpus(model_path))
+        waiting_logged = False
+        while True:
+            for gpu in settings.gpu_list():
+                if gpu in assigned:
+                    continue
+                try:
+                    evicted = await self._evict_lru_on_gpu(gpu, reserve_for=model_id)
+                except Exception:
+                    evicted = False
+                if not evicted:
+                    continue
+                try:
+                    await self._load_on_gpu(model_id, kind, model_path, gpu, load_kwargs)
+                    return gpu
+                except Exception as exc:
+                    errors.append(f"GPU {gpu} (after eviction): {exc}")
+                    _logger.warning("Load %s on GPU %s after eviction failed: %s", model_id, gpu, exc)
+            if tracker.inference_count <= 0 and not pool.any_inflight():
+                break
+            if not waiting_logged:
+                _logger.info(
+                    "All GPUs full and models busy; waiting for inference to finish before loading %s",
+                    model_id,
+                )
+                waiting_logged = True
+            await tracker.wait_any_idle()
+        if errors:
+            _logger.error("Failed to load %s on all GPUs: %s", model_id, "; ".join(errors))
+        else:
+            _logger.error("Failed to load %s: no GPU capacity and no evictable idle model", model_id)
+        return None
+
+    async def _wait_instance_idle(self, model_id: str, model_path: str, gpu: str) -> None:
+        await get_tracker().wait_idle(model_id, gpu)
+        pool = self.pool
+        while pool.instance_inflight(model_path, gpu) > 0:
+            await asyncio.sleep(0.2)
+
+    async def _sync_from_pool(self) -> None:
+        """与 WorkerPool 的实例分布对齐本地缓存记录。"""
+        try:
+            pool = self.pool
+            await pool.resync()
             async with self._lock:
-                for mid in list(self._cache):
-                    if mid not in loaded_ids:
-                        del self._cache[mid]
-                for mid, info in loaded_ids.items():
-                    if mid not in self._cache:
-                        ts = info.get("last_used", 0.0) or time.monotonic()
-                        self._cache[mid] = ts
-                if self._cache:
-                    self._empty_since = None
+                for model_id in list(self._cache):
+                    model_path = resolve_model_path(model_id)
+                    actual = set(pool.model_gpus(model_path))
+                    instances = self._cache[model_id]
+                    for gpu in list(instances):
+                        if gpu not in actual:
+                            del instances[gpu]
+                    for gpu in actual:
+                        if gpu not in instances:
+                            instances[gpu] = time.monotonic()
+                    if not instances:
+                        del self._cache[model_id]
+                        self._kinds.pop(model_id, None)
+                        invalidate_model_meta(model_id)
         except Exception:
             pass
-
-    async def _enforce_max_concurrent(self, reserve_for: Optional[str] = None):
-        """尝试淘汰模型，确保缓存不超过上限。"""
-        branch = self._get_branch()
-        tracker = get_tracker()
-        logged = False
-        while True:
-            async with self._lock:
-                if len(self._cache) < settings.max_concurrent_models:
-                    return
-                if not self._cache:
-                    return
-                if reserve_for in self._cache and len(self._cache) == 1:
-                    return
-                sorted_ids = sorted(
-                    self._cache.keys(),
-                    key=lambda p: 0.0 if p == reserve_for else self._cache.get(p, 0.0),
-                )
-                lru_id = None
-                for mid in sorted_ids:
-                    if mid == reserve_for:
-                        continue
-                    if not tracker.is_busy(mid):
-                        lru_id = mid
-                        break
-                if lru_id is not None:
-                    del self._cache[lru_id]
-            if lru_id is None:
-                if not logged:
-                    busy = [mid for mid in sorted_ids if mid != reserve_for]
-                    _logger.info("All models busy, waiting: %s", busy)
-                    logged = True
-                await tracker.wait_any_idle()
-                continue
-            _logger.info("Evicting LRU model: %s", lru_id)
-            try:
-                await branch.unload_model(resolve_model_path(lru_id))
-            except Exception:
-                _logger.warning("Failed to unload %s during eviction", lru_id)
-            return
 
     # ── 公开接口（全部 async） ──────────────────────────────
 
@@ -124,210 +310,239 @@ class ModelCacheManager:
         self, model_id: str, model_kind: str,
         load_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """确保模型至少有一个实例加载（不存在时按 GPU 优先级加载）。"""
         async with self._op_lock:
-            async with self._lock:
-                already = model_id in self._cache
-            if not already:
-                await self._enforce_max_concurrent(reserve_for=model_id)
-            branch = self._get_branch()
             model_path = resolve_model_path(model_id)
-            await branch.load_model(model_path, model_kind, load_kwargs or {})
-            if not already:
-                try:
-                    meta = await branch.get_supported_options(model_path)
-                    cache_model_meta(model_id, meta)
-                except Exception:
-                    _logger.warning("Failed to fetch model meta for %s", model_id)
-            async with self._lock:
-                self._cache[model_id] = time.monotonic()
-                self._empty_since = None
-                if not already:
-                    _logger.info(
-                        "Model loaded: %s (cache: %d/%d)",
-                        model_id, len(self._cache), settings.max_concurrent_models,
-                    )
-                else:
-                    _logger.debug("Model already cached: %s", model_id)
+            if self.pool.model_gpus(model_path):
+                await self.touch_model(model_id)
+                return
+            gpu = await self._load_locked(model_id, model_kind, load_kwargs, evict=True)
+            if gpu is None:
+                raise RuntimeError(f"Failed to load model on any GPU: {model_id}")
 
-    async def unload_model(self, model_id: str) -> None:
+    async def acquire_model(
+        self, model_id: str, model_kind: str,
+        load_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> ModelLease:
+        """为一次推理请求分配模型实例（多卡自动并行）。
+
+        分配策略：
+        1. 存在空闲实例 → 优先空闲 GPU（整卡无任务）上的空闲实例
+        2. 全部实例忙碌 → 尝试在空闲/未满 GPU 并行加载新实例
+        3. 无法再加载 → 均分任务队列（选择任务数最少的实例）
+        """
         async with self._op_lock:
-            await get_tracker().wait_idle(model_id)
-            async with self._lock:
-                self._cache.pop(model_id, None)
-            try:
-                branch = self._get_branch()
-                await branch.unload_model(resolve_model_path(model_id))
-            except Exception:
-                pass
-            async with self._lock:
-                if not self._cache:
-                    self._empty_since = time.monotonic()
-            invalidate_model_meta(model_id)
+            pool = self.pool
+            model_path = resolve_model_path(model_id)
+            if not pool.model_gpus(model_path):
+                gpu = await self._load_locked(model_id, model_kind, load_kwargs, evict=True)
+                if gpu is None:
+                    raise RuntimeError(f"Failed to load model on any GPU: {model_id}")
+            elif not pool.has_idle_instance(model_path):
+                # 并行加载新实例失败时静默降级为排队均分
+                try:
+                    await self._load_locked(model_id, model_kind, load_kwargs, evict=False)
+                except Exception:
+                    _logger.debug("Parallel instance load failed for %s", model_id, exc_info=True)
+            gpu = pool.pick_instance(model_path)
+            if gpu is None:
+                raise RuntimeError(f"Model not loaded: {model_id}")
+            pool.mark_acquire(model_path, gpu)
+            await get_tracker().acquire_inference(model_id, gpu)
+            return ModelLease(self, model_id, model_path, gpu)
 
-    async def touch_model(self, model_id: str) -> None:
+    async def unload_model(self, model_id: str, gpu: Optional[str] = None) -> None:
+        """卸载模型；gpu 指定时仅卸载该实例，否则卸载全部实例。"""
+        async with self._op_lock:
+            model_path = resolve_model_path(model_id)
+            async with self._lock:
+                gpus = list(self._cache.get(model_id, {}).keys())
+            if gpu is not None:
+                gpus = [g for g in gpus if g == gpu]
+                # 缓存中无记录但 Worker 可能仍持有（同步偏差），照常下发卸载
+                if not gpus:
+                    gpus = [gpu]
+            for g in gpus:
+                await self._wait_instance_idle(model_id, model_path, g)
+                await self._unload_instance(model_id, model_path, g)
+
+    async def touch_model(self, model_id: str, gpu: Optional[str] = None) -> None:
+        """刷新模型实例的使用时间（Base 模型的音色保存/解析同样视为使用）。"""
         async with self._lock:
-            if model_id in self._cache:
-                self._cache[model_id] = time.monotonic()
+            instances = self._cache.get(model_id)
+            if not instances:
+                return
+            now = time.monotonic()
+            if gpu is not None and gpu in instances:
+                instances[gpu] = now
+            elif gpu is None:
+                for g in instances:
+                    instances[g] = now
 
-    async def unload_idle(self, max_idle_seconds: float) -> List[str]:
+    async def unload_idle(self, max_idle_seconds: float) -> List[Dict[str, str]]:
+        """卸载空闲超时的模型实例，返回 [{"id": ..., "gpu": ...}]。"""
         async with self._op_lock:
             now = time.monotonic()
             async with self._lock:
                 candidates = [
-                    mid for mid, last_used in self._cache.items()
+                    (mid, g) for mid, instances in self._cache.items()
+                    for g, last_used in instances.items()
                     if now - last_used > max_idle_seconds
                 ]
             tracker = get_tracker()
-            branch = self._get_branch()
-            unloaded: List[str] = []
-            for mid in candidates:
-                await tracker.wait_idle(mid)
-                # 推理结束时 touch_model() 可能已刷新 last_used；等待期间必须
-                # 重新检查，避免把刚结束推理的模型立刻卸载。
+            pool = self.pool
+            unloaded: List[Dict[str, str]] = []
+            for mid, gpu in candidates:
+                model_path = resolve_model_path(mid)
+                await tracker.wait_idle(mid, gpu)
+                while pool.instance_inflight(model_path, gpu) > 0:
+                    await asyncio.sleep(0.2)
+                # 等待期间推理结束可能已刷新 last_used，必须重新检查
                 async with self._lock:
-                    last_used = self._cache.get(mid)
+                    last_used = self._cache.get(mid, {}).get(gpu)
                     if last_used is None or time.monotonic() - last_used <= max_idle_seconds:
                         continue
-                try:
-                    await branch.unload_model(resolve_model_path(mid))
-                except Exception:
-                    continue
-                async with self._lock:
-                    self._cache.pop(mid, None)
-                unloaded.append(mid)
-                invalidate_model_meta(mid)
-                _logger.info("Idle unload: %s", mid)
-            if unloaded:
-                async with self._lock:
-                    if not self._cache:
-                        self._empty_since = time.monotonic()
+                await self._unload_instance(mid, model_path, gpu)
+                if mid not in self._cache or gpu not in self._cache.get(mid, {}):
+                    unloaded.append({"id": mid, "gpu": gpu})
+                    _logger.info("Idle unload: %s (GPU %s)", mid, gpu)
             return unloaded
 
     async def cached_models(self) -> Dict[str, Any]:
-        await self._sync_from_worker()
+        await self._sync_from_pool()
         async with self._lock:
-            sorted_ids = sorted(
-                self._cache.keys(),
-                key=lambda p: self._cache.get(p, 0.0),
-                reverse=True,
-            )
-            loaded_list = [
-                {"id": mid, "kind": self._detect_kind(mid), "last_used": self._cache.get(mid, 0.0)}
-                for mid in sorted_ids
+            entries = [
+                {"id": mid, "gpu": gpu, "kind": self._kind_of(mid), "last_used": last_used}
+                for mid, instances in self._cache.items()
+                for gpu, last_used in instances.items()
             ]
-            return {
-                "loaded": loaded_list,
-                "max_concurrent": settings.max_concurrent_models,
-                "usage_order": sorted_ids,
-            }
+        entries.sort(key=lambda e: e["last_used"], reverse=True)
+        return {
+            "loaded": entries,
+            "max_concurrent": settings.max_concurrent_models,
+            "usage_order": [{"id": e["id"], "gpu": e["gpu"]} for e in entries],
+        }
+
+    async def pick_loaded_instance(self, kind: str) -> Optional[Tuple[str, str]]:
+        """在已加载的指定 kind 模型中选择实例，返回 (model_id, gpu)。
+
+        优先空闲 GPU 上的空闲实例，其次空闲实例，最后任务数最少的实例。
+        """
+        pool = self.pool
+        candidates: List[Tuple[str, str, str]] = []  # (model_id, model_path, gpu)
+        async with self._lock:
+            snapshot = {mid: list(instances) for mid, instances in self._cache.items()}
+        for mid, gpus in snapshot.items():
+            if self._kind_of(mid) != kind:
+                continue
+            try:
+                model_path = resolve_model_path(mid)
+            except ValueError:
+                continue
+            for gpu in pool.model_gpus(model_path):
+                candidates.append((mid, model_path, gpu))
+        if not candidates:
+            return None
+        idle = [c for c in candidates if pool.instance_inflight(c[1], c[2]) == 0]
+        if idle:
+            gpu_idle = [c for c in idle if pool.gpu_inflight(c[2]) == 0]
+            best = gpu_idle or idle
+            best.sort(key=lambda c: pool._priority_index(c[2]))
+            return best[0][0], best[0][2]
+        best = min(candidates, key=lambda c: (pool.instance_inflight(c[1], c[2]), pool._priority_index(c[2])))
+        return best[0], best[2]
 
     async def clear(self) -> None:
         async with self._op_lock:
             async with self._lock:
-                model_ids = list(self._cache)
-            tracker = get_tracker()
-            branch = self._get_branch()
-            for mid in model_ids:
-                await tracker.wait_idle(mid)
-                try:
-                    await branch.unload_model(resolve_model_path(mid))
-                except Exception:
-                    pass
-            async with self._lock:
-                self._cache.clear()
-                self._empty_since = time.monotonic()
+                entries = [
+                    (mid, g) for mid, instances in self._cache.items() for g in instances
+                ]
+            for mid, gpu in entries:
+                model_path = resolve_model_path(mid)
+                await self._wait_instance_idle(mid, model_path, gpu)
+                await self._unload_instance(mid, model_path, gpu)
 
-    async def worker_start(self) -> None:
-        await self._get_branch().worker_start()
-        async with self._lock:
-            if not self._cache:
-                self._empty_since = time.monotonic()
+    # ── Worker 生命周期 ──────────────────────────────────────
+
+    async def worker_start(self, gpu_id: Optional[str] = None) -> None:
+        await self._get_branch().worker_start(gpu_id)
         from .routers.ws import broadcast_worker_status
         asyncio.create_task(broadcast_worker_status())
 
-    async def worker_stop(self) -> None:
-        async with self._op_lock:
-            async with self._lock:
-                model_ids = list(self._cache.keys())
-            if model_ids:
-                branch = self._get_branch()
-                tracker = get_tracker()
-                for mid in model_ids:
-                    await tracker.wait_idle(mid)
-                    try:
-                        await branch.unload_model(resolve_model_path(mid))
-                    except Exception:
-                        pass
-                    invalidate_model_meta(mid)
-            async with self._lock:
-                self._cache.clear()
-                self._empty_since = None
-            await self._get_branch().worker_stop()
-        from .routers.ws import broadcast_worker_status
-        asyncio.create_task(broadcast_worker_status())
-
-    async def _worker_force_stop_locked(self) -> None:
-        """在持有 _op_lock 时强停 Worker 并清除缓存状态。"""
-        async with self._lock:
-            model_ids = list(self._cache.keys())
-            self._cache.clear()
-            self._empty_since = None
-        for mid in model_ids:
-            invalidate_model_meta(mid)
-        await self._get_branch().worker_force_stop()
-
-    async def worker_force_stop(self) -> None:
-        """立即终止 Worker，并清除服务端缓存状态。"""
-        # 不等待 _op_lock：强停必须能够打断正在加载/推理的 Worker。
+    async def worker_stop(self, gpu_id: Optional[str] = None, stop_all: bool = False) -> None:
         branch = self._get_branch()
-        await branch.worker_force_stop()
         async with self._op_lock:
-            # 若已有加载请求排在操作锁队列中，它可能在首次强停后重启
-            # Worker；进入锁后再强停一次，确保返回时一定已停止。
-            await branch.worker_force_stop()
-            async with self._lock:
-                model_ids = list(self._cache.keys())
-                self._cache.clear()
-                self._empty_since = None
-            for mid in model_ids:
-                invalidate_model_meta(mid)
+            pool = self.pool
+            if stop_all:
+                targets = [g for g, w in pool.workers.items() if w.alive]
+            elif gpu_id is not None:
+                targets = [gpu_id]
+            else:
+                target = pool.first_alive_gpu()
+                targets = [target] if target is not None else []
+            for g in targets:
+                for path in list(pool.gpu_models(g)):
+                    mid = os.path.basename(path)
+                    await self._wait_instance_idle(mid, path, g)
+                    await self._unload_instance(mid, path, g)
+                await branch.worker_stop(g)
         from .routers.ws import broadcast_cache_status, broadcast_worker_status
         asyncio.create_task(broadcast_cache_status())
         asyncio.create_task(broadcast_worker_status())
 
-    async def cleanup_idle(self, max_idle_seconds: float) -> Dict[str, Any]:
-        """卸载闲置模型，并在缓存持续为空达到阈值后强停 Worker。"""
-        unloaded = await self.unload_idle(max_idle_seconds)
-        worker_force_stopped = False
+    async def worker_force_stop(self, gpu_id: Optional[str] = None, stop_all: bool = False) -> None:
+        """立即终止 Worker，并清除服务端缓存状态。"""
+        branch = self._get_branch()
+        pool = self.pool
+        # 先确定目标：stop_all 为全部，否则为指定 GPU 或按优先级第一个运行中的
+        if stop_all:
+            targets: Optional[set] = None  # None 表示全部
+        else:
+            target = gpu_id or pool.first_alive_gpu()
+            targets = {target} if target is not None else set()
+        # 不等待 _op_lock：强停必须能够打断正在加载/推理的 Worker。
+        await branch.worker_force_stop(gpu_id, stop_all)
+        async with self._op_lock:
+            # 若已有加载请求排在操作锁队列中，它可能在首次强停后重启
+            # Worker；进入锁后再强停一次，确保返回时一定已停止。
+            await branch.worker_force_stop(gpu_id, stop_all)
+            async with self._lock:
+                for mid in list(self._cache):
+                    if targets is None:
+                        del self._cache[mid]
+                        self._kinds.pop(mid, None)
+                        invalidate_model_meta(mid)
+                        continue
+                    instances = self._cache[mid]
+                    for g in list(instances):
+                        if g in targets:
+                            del instances[g]
+                    if not instances:
+                        del self._cache[mid]
+                        self._kinds.pop(mid, None)
+                        invalidate_model_meta(mid)
+        from .routers.ws import broadcast_cache_status, broadcast_worker_status
+        asyncio.create_task(broadcast_cache_status())
+        asyncio.create_task(broadcast_worker_status())
 
-        # 与模型加载/卸载共用操作锁，防止空缓存检查后有新模型加载，
+    async def cleanup_idle(self, model_idle_seconds: float, worker_idle_seconds: float) -> Dict[str, Any]:
+        """卸载闲置模型实例，并停止空闲超时的无模型 Worker。"""
+        unloaded = await self.unload_idle(model_idle_seconds)
+        workers_stopped: List[str] = []
+
+        # 与模型加载/卸载共用操作锁，防止检查后有新模型加载，
         # 却仍将刚加载完成的 Worker 误杀。
         async with self._op_lock:
-            status = await self._get_branch().worker_status()
-            now = time.monotonic()
-            async with self._lock:
-                if not status.get("alive"):
-                    self._empty_since = None
-                    empty_for = 0.0
-                elif self._cache:
-                    self._empty_since = None
-                    empty_for = 0.0
-                else:
-                    if self._empty_since is None:
-                        self._empty_since = now
-                    empty_for = now - self._empty_since
-
-            if status.get("alive") and empty_for >= max_idle_seconds:
-                _logger.info(
-                    "Worker cache stayed empty for %.1fs; force stopping Worker",
-                    empty_for,
-                )
-                await self._worker_force_stop_locked()
-                worker_force_stopped = True
+            pool = self.pool
+            for gpu in pool.idle_worker_gpus(worker_idle_seconds):
+                _logger.info("Worker (GPU %s) idle for too long; force stopping", gpu)
+                await self._get_branch().worker_force_stop(gpu_id=gpu)
+                workers_stopped.append(gpu)
 
         return {
             "unloaded": unloaded,
-            "worker_force_stopped": worker_force_stopped,
+            "workers_stopped": workers_stopped,
         }
 
     async def worker_status(self) -> Dict[str, Any]:
@@ -349,21 +564,22 @@ def get_cache_manager() -> ModelCacheManager:
 
 
 async def idle_cleanup_loop(check_interval_seconds: float = 30.0) -> None:
-    """定期卸载闲置模型，并在缓存持续为空后强制停止 Worker。"""
+    """定期卸载闲置模型实例，并停止空闲超时的 Worker。"""
     while True:
         await asyncio.sleep(check_interval_seconds)
         try:
             result = await get_cache_manager().cleanup_idle(
-                float(settings.idle_unload_seconds)
+                float(settings.idle_unload_seconds),
+                float(settings.worker_idle_unload_seconds),
             )
             if result["unloaded"]:
                 from .routers.ws import broadcast_cache_status
                 await broadcast_cache_status()
-            if result["worker_force_stopped"]:
+            if result["workers_stopped"]:
                 from .routers.ws import broadcast_cache_status, broadcast_worker_status
                 await broadcast_cache_status()
                 await broadcast_worker_status()
-                _logger.info("Idle cleanup force-stopped the Worker")
+                _logger.info("Idle cleanup stopped workers: %s", result["workers_stopped"])
         except asyncio.CancelledError:
             raise
         except Exception:

@@ -6,7 +6,9 @@
 """
 import json
 import os
+import re
 from pathlib import Path
+from typing import List
 
 from fastapi import HTTPException
 
@@ -14,13 +16,46 @@ from fastapi import HTTPException
 SETTINGS_PATH = Path(__file__).parent / "settings.json"
 
 
+def parse_gpu_devices(value: str) -> List[str]:
+    """解析 GPU 设备列表配置，返回按优先级排序的设备 ID 列表。
+
+    语法：以空白或逗号分隔的设备项，每项为单个编号（"2"）或区间（"3-5"）。
+    例如 "2 0 3-5" → ["2", "0", "3", "4", "5"]，优先级按书写顺序。
+    留空时默认 ["0"]。重复编号仅保留第一次出现的位置。
+    """
+    if not value or not value.strip():
+        return ["0"]
+    devices: List[str] = []
+    for token in re.split(r"[\s,]+", value.strip()):
+        if not token:
+            continue
+        m = re.fullmatch(r"(\d+)(?:-(\d+))?", token)
+        if not m:
+            raise ValueError(f"Invalid GPU device token: {token!r}")
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) is not None else start
+        if end < start:
+            raise ValueError(f"Invalid GPU device range: {token!r}")
+        if end - start > 64:
+            raise ValueError(f"GPU device range too large: {token!r}")
+        for dev in range(start, end + 1):
+            dev_id = str(dev)
+            if dev_id not in devices:
+                devices.append(dev_id)
+    if not devices:
+        return ["0"]
+    return devices
+
+
 class AppSettings:
     """服务端全局配置"""
 
     def __init__(self):
         # 模型缓存相关
-        self.max_concurrent_models: int = 1    # 最大并发加载模型数
+        self.gpu_devices: str = ""             # GPU 设备列表，如 "2 0 3-5"，留空使用 0
+        self.max_concurrent_models: int = 1    # 每 GPU 最多加载的不同模型数
         self.idle_unload_seconds: int = 600    # 模型空闲卸载时间（秒）
+        self.worker_idle_unload_seconds: int = 600  # Worker 空闲停止时间（秒）
 
         # QwenTTS 后端路径配置
         self.backend_branch: str = "QwenLM/Qwen3-TTS"  # 后端仓库分支
@@ -48,11 +83,17 @@ class AppSettings:
         """QwenTTS 是否已配置"""
         return bool(self.project_dir)
 
+    def gpu_list(self) -> List[str]:
+        """按优先级排序的可用 GPU 设备 ID 列表"""
+        return parse_gpu_devices(self.gpu_devices)
+
     def to_dict(self) -> dict:
         """将当前配置序列化为字典，用于 API 响应和 JSON 持久化"""
         return {
+            "gpu_devices": self.gpu_devices,
             "max_concurrent_models": self.max_concurrent_models,
             "idle_unload_seconds": self.idle_unload_seconds,
+            "worker_idle_unload_seconds": self.worker_idle_unload_seconds,
             "backend_branch": self.backend_branch,
             "project_dir": self.project_dir,
             "env_dir": self.env_dir,
@@ -65,8 +106,10 @@ class AppSettings:
     def update(self, data: dict):
         """用传入的字典更新配置，仅更新字典中存在的键"""
         for key in (
+            "gpu_devices",
             "max_concurrent_models",
             "idle_unload_seconds",
+            "worker_idle_unload_seconds",
             "backend_branch",
             "project_dir",
             "env_dir",
