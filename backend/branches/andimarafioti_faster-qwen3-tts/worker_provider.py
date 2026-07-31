@@ -164,7 +164,7 @@ class FasterQwenProvider(WorkerProvider):
             code = code.unsqueeze(-1)
         qwen = model.model
         wavs, sample_rate = qwen.model.speech_tokenizer.decode(
-            [{"audio_codes": code.to(qwen.device)}]
+            {"audio_codes": code.to(qwen.device)}
         )
         return [np.asarray(wavs[0], dtype=np.float32)], int(sample_rate)
 

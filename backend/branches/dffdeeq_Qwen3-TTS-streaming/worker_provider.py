@@ -199,7 +199,7 @@ class StreamingQwenProvider(WorkerProvider):
             raise ProviderValidationError(f"ref_code has invalid dtype {code.dtype}, expected integer")
         if code.dim() == 1:
             code = code.unsqueeze(-1)
-        wavs, sample_rate = model.model.speech_tokenizer.decode([{"audio_codes": code.to(model.device)}])
+        wavs, sample_rate = model.model.speech_tokenizer.decode({"audio_codes": code.to(model.device)})
         return [np.asarray(wavs[0], dtype=np.float32)], int(sample_rate)
 
 

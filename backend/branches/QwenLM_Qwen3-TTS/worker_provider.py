@@ -145,7 +145,7 @@ class OfficialQwenProvider(WorkerProvider):
         if ref_code.dim() == 1:
             ref_code = ref_code.unsqueeze(-1)
         wavs, sample_rate = model.model.speech_tokenizer.decode(
-            [{"audio_codes": ref_code.to(model.device)}]
+            {"audio_codes": ref_code.to(model.device)}
         )
         return [np.asarray(wavs[0], dtype=np.float32)], int(sample_rate)
 
