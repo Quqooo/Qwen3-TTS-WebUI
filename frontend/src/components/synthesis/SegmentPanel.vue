@@ -15,9 +15,11 @@ const props = withDefaults(defineProps<{
   canDeselect?: boolean
   showDivider?: boolean
   nested?: boolean
+  animateHeight?: boolean
 }>(), {
   canDeselect: true,
   showDivider: false,
+  animateHeight: true,
 })
 
 const emit = defineEmits<{
@@ -35,7 +37,7 @@ function syncHeight() {
   const el = wrapper.value
   const content = inner.value
   if (!el || !content) return
-  el.style.height = content.scrollHeight + "px"
+  el.style.height = props.animateHeight ? content.scrollHeight + "px" : "auto"
 }
 
 watch(() => props.modelValue, () => {
@@ -92,7 +94,7 @@ function select(val: string) {
 
     <div
       ref="wrapper"
-      class="transition-[height] duration-200 ease-out"
+      :class="props.animateHeight ? 'transition-[height] duration-200 ease-out' : ''"
     >
       <div ref="inner">
         <template v-for="seg in resolvedSegments" :key="seg.value">

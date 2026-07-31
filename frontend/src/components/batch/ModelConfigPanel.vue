@@ -234,6 +234,7 @@ function onUploadInput(ev: Event) {
       :model-value="modelValue.modelKind"
       @update:model-value="onKindChange($event as ModelKind)"
       :segments="kindOptions"
+      :animate-height="false"
     >
       <template #base>
         <div class="space-y-1.5">
@@ -386,6 +387,7 @@ function onUploadInput(ev: Event) {
         :model-value="modelValue.timelineEnabled ? 'on' : ''"
         @update:model-value="patch({ timelineEnabled: $event === 'on' })"
         :segments="[{ value: 'on', label: t('components.modelConfigPanel.timeline'), icon: Clock }]"
+        :animate-height="false"
         can-deselect
       >
         <template #on>
