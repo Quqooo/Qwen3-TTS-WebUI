@@ -554,7 +554,7 @@ function onKeyDown(ev: KeyboardEvent) {
       <!-- Skeleton loading -->
       <div v-if="pageLoading" key="skeleton" class="flex gap-4 flex-1 min-h-0">
         <div class="flex-[5] min-w-0 flex flex-col gap-3">
-          <div class="flex-1 border rounded-xl bg-card overflow-hidden flex flex-col p-3 space-y-2">
+          <div class="flex-[2] min-h-0 border rounded-xl bg-card overflow-hidden flex flex-col p-3 space-y-2">
             <div class="grid grid-cols-batch gap-2 border-b pb-2">
               <Skeleton v-for="i in 9" :key="i" class="h-4" />
             </div>
@@ -563,23 +563,44 @@ function onKeyDown(ev: KeyboardEvent) {
               <Skeleton v-for="i in 4" :key="'b'+i" class="h-9 flex-1" />
             </div>
           </div>
-          <div class="flex gap-2">
-            <Skeleton class="h-9 flex-[1.5]" />
-            <Skeleton class="h-9 flex-[1]" />
+          <div class="flex-[1] min-h-0 flex gap-2">
+            <div class="flex-[1.5] min-w-0 border rounded-xl bg-card p-3 flex flex-col gap-2 overflow-hidden">
+              <Skeleton class="h-9 w-full rounded-lg" />
+              <Skeleton class="h-9 w-full rounded-lg" />
+              <Skeleton class="h-9 w-2/3 rounded-lg" />
+            </div>
+            <div class="flex-[1] min-w-0 border rounded-xl bg-card p-3 flex flex-col gap-[11px] overflow-hidden">
+              <div class="grid grid-cols-3 gap-[7px]">
+                <Skeleton v-for="i in 3" :key="i" class="h-8" />
+              </div>
+              <Skeleton class="h-9 w-full" />
+              <Skeleton class="h-9 w-full" />
+              <div class="flex gap-2">
+                <Skeleton class="h-9 flex-1" />
+                <Skeleton class="h-9 flex-1" />
+              </div>
+            </div>
           </div>
         </div>
         <div class="flex-[2] min-w-0 flex flex-col gap-4">
-          <div class="flex-1 border rounded-xl bg-card p-3 space-y-3">
-            <Skeleton class="h-4 w-32" />
+          <div class="flex-1 min-h-0 border rounded-xl bg-card p-3 space-y-3 overflow-hidden">
+            <div class="flex items-center justify-between">
+              <Skeleton class="h-4 w-32" />
+              <Skeleton class="h-3 w-3" />
+            </div>
             <Skeleton class="h-8 w-full" />
             <Skeleton class="h-8 w-full" />
             <Skeleton class="h-8 w-3/4" />
             <Skeleton class="h-8 w-full" />
+            <Skeleton class="h-8 w-full" />
+            <Skeleton class="h-8 w-3/4" />
             <Skeleton class="h-20 w-full" />
           </div>
-          <div class="border rounded-xl bg-card p-3 space-y-2">
+          <div class="border rounded-xl bg-card px-3 py-2.5 space-y-1.5 shrink-0">
             <Skeleton class="h-4 w-16" />
             <Skeleton class="h-4 w-full" />
+            <Skeleton class="h-4 w-3/4" />
+            <Skeleton class="h-4 w-1/2" />
           </div>
         </div>
       </div>

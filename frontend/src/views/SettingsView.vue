@@ -207,52 +207,117 @@ onMounted(async () => {
         <!-- Skeleton loading -->
         <div v-if="loading" key="skeleton" class="space-y-4">
           <div class="flex gap-6">
-            <div class="flex-[5] space-y-4">
+            <div class="flex-[5] min-w-0 space-y-4">
               <Skeleton class="h-4 w-28" />
               <Skeleton class="h-3 w-64" />
-              <div class="grid grid-cols-2 gap-4">
-                <div class="space-y-4">
-                  <div class="border rounded-xl p-4 space-y-4">
-                    <Skeleton class="h-5 w-24" />
+              <div class="grid grid-cols-2 gap-4 min-h-[26rem]">
+                <div class="border rounded-xl p-4 space-y-3 bg-card h-full">
+                  <Skeleton class="h-5 w-24" />
+                  <div class="space-y-1.5">
+                    <Skeleton class="h-3 w-20" />
                     <Skeleton class="h-8 w-full" />
+                    <Skeleton class="h-2.5 w-full" />
+                  </div>
+                  <div class="space-y-1.5">
+                    <Skeleton class="h-3 w-24" />
                     <Skeleton class="h-8 w-full" />
-                    <Skeleton class="h-24 w-full" />
-                    <Skeleton class="h-20 w-full" />
+                    <Skeleton class="h-2.5 w-full" />
+                  </div>
+                  <div class="flex gap-3">
+                    <div class="flex-1 space-y-1.5">
+                      <Skeleton class="h-3 w-full" />
+                      <Skeleton class="h-8 w-full" />
+                    </div>
+                    <div class="flex-1 space-y-1.5">
+                      <Skeleton class="h-3 w-full" />
+                      <Skeleton class="h-8 w-full" />
+                    </div>
+                  </div>
+                  <Skeleton class="h-2.5 w-full" />
+                  <div class="border rounded-lg p-3 space-y-2">
+                    <Skeleton class="h-4 w-24" />
+                    <Skeleton class="h-4 w-full" />
+                    <Skeleton class="h-4 w-2/3" />
+                  </div>
+                  <div class="border rounded-lg p-3 space-y-2">
+                    <Skeleton class="h-4 w-28" />
+                    <Skeleton class="h-4 w-3/4" />
                   </div>
                 </div>
-                <div class="border rounded-xl p-4 space-y-4">
+                <div class="border rounded-xl p-4 space-y-3 bg-card h-full">
                   <Skeleton class="h-5 w-28" />
                   <Skeleton class="h-3 w-48" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
+                  <div class="space-y-1.5">
+                    <Skeleton class="h-3 w-16" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1.5">
+                    <Skeleton class="h-3 w-20" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1.5">
+                    <Skeleton class="h-3 w-16" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1.5">
+                    <Skeleton class="h-3 w-20" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1.5">
+                    <Skeleton class="h-3 w-16" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="flex-[3] space-y-4">
+            <div class="flex-[3] min-w-0 space-y-4">
               <Skeleton class="h-4 w-24" />
               <Skeleton class="h-3 w-48" />
-              <div class="border rounded-xl p-4 space-y-4">
-                <Skeleton class="h-5 w-32" />
+              <div class="border rounded-xl p-4 space-y-3 bg-card">
+                <div class="flex items-center justify-between">
+                  <Skeleton class="h-5 w-32" />
+                  <Skeleton class="h-3 w-16" />
+                </div>
                 <Skeleton class="h-10 w-full" />
-                <div class="grid grid-cols-2 gap-4">
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
-                  <Skeleton class="h-8 w-full" />
+                <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <div class="space-y-1">
+                    <Skeleton class="h-3 w-20" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1">
+                    <Skeleton class="h-3 w-12" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1">
+                    <Skeleton class="h-3 w-16" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1">
+                    <Skeleton class="h-3 w-24" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1">
+                    <Skeleton class="h-3 w-24" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1">
+                    <Skeleton class="h-3 w-20" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1">
+                    <Skeleton class="h-3 w-20" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
+                  <div class="space-y-1">
+                    <Skeleton class="h-3 w-28" />
+                    <Skeleton class="h-8 w-full" />
+                  </div>
                 </div>
               </div>
-              <div class="border rounded-xl p-4 space-y-4">
+              <div class="border rounded-xl p-4 space-y-3 bg-card">
                 <Skeleton class="h-5 w-16" />
                 <Skeleton class="h-8 w-full" />
               </div>
-              <Skeleton class="h-10 w-full" />
             </div>
           </div>
           <Skeleton class="h-10 w-28" />
