@@ -95,6 +95,9 @@ class FasterQwenProvider(WorkerProvider):
     def stream_voice_clone(self, model: Any, request: Dict[str, Any]):
         kwargs = self._clone_kwargs(model, request)
         kwargs.update(self._stream_options(request))
+        parity_mode = request.get("stream_params", {}).get("parity_mode")
+        if parity_mode is not None:
+            kwargs["parity_mode"] = parity_mode
         yield from self._normalize_stream(model.generate_voice_clone_streaming(**kwargs))
 
     def stream_custom_voice(self, model: Any, request: Dict[str, Any]):
@@ -112,10 +115,7 @@ class FasterQwenProvider(WorkerProvider):
     @staticmethod
     def _stream_options(request: Dict[str, Any]) -> Dict[str, Any]:
         values = request.get("stream_params", {})
-        result = {"chunk_size": values.get("chunk_size", 12)}
-        if values.get("parity_mode") is not None:
-            result["parity_mode"] = values["parity_mode"]
-        return result
+        return {"chunk_size": values.get("chunk_size", 12)}
 
     @staticmethod
     def _normalize_stream(iterator: Any):
