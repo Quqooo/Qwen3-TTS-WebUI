@@ -225,20 +225,33 @@ if not _is_dev and _frontend_dist.is_dir():
                 return
 
             path = scope.get("path", "")
-            if path.startswith("/api"):
+            if path == "/api" or path.startswith("/api/"):
                 await self.app(scope, receive, send)
                 return
 
+            index = _frontend_dist / "index.html"
+            should_fallback = False
+
             async def _send(message):
-                if message["type"] == "http.response.start" and message["status"] == 404:
-                    index = _frontend_dist / "index.html"
-                    if index.is_file():
-                        response = FileResponse(str(index))
-                        await response(scope, receive, send)
-                        return
+                nonlocal should_fallback
+                if (
+                    message["type"] == "http.response.start"
+                    and message["status"] == 404
+                    and index.is_file()
+                ):
+                    # Swallow the complete original 404 response. Sending the SPA
+                    # response here would let the downstream app send its 404 body
+                    # afterwards, violating ASGI's one-response-per-request rule.
+                    should_fallback = True
+                    return
+                if should_fallback:
+                    return
                 await send(message)
 
             await self.app(scope, receive, _send)
+            if should_fallback:
+                response = FileResponse(str(index))
+                await response(scope, receive, send)
 
     app.add_middleware(_SPAMiddleware)
 
