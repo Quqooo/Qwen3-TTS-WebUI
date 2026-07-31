@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from ..cache import get_cache_manager
 from ..config import require_qwen, settings
 from ..errors import APIError, raise_error
-from ..model_meta import get_model_meta
+from ..model_meta import detect_kind_from_config, get_model_meta
 from .ws import broadcast_cache_status
 
 router = APIRouter(prefix="/api", tags=["models"], dependencies=[Depends(require_qwen)])
@@ -38,7 +38,11 @@ def _get_model_ids() -> List[str]:
 
 
 def _detect_model_kind(name: str) -> str:
-    """根据目录名猜测模型类型"""
+    """判断模型类型：优先读取 config.json 的 tts_model_type 键，无法确定时按目录名猜测"""
+    kind = detect_kind_from_config(name)
+    if kind:
+        return kind
+
     lower = name.lower().replace("-", "").replace("_", "")
 
     non_model_keywords = ["tokenizer", "vocab", "safetensors"]

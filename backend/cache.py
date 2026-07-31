@@ -24,7 +24,7 @@ from .branches import get_branch
 from .branches.base import TTSBranch
 from .branches.worker_pool import WorkerPool
 from .config import resolve_model_path, settings
-from .model_meta import cache_model_meta, invalidate_model_meta
+from .model_meta import cache_model_meta, detect_kind_from_config, invalidate_model_meta
 from .tracker import get_tracker
 
 _logger = logging.getLogger("qwen-webui.cache")
@@ -99,6 +99,10 @@ class ModelCacheManager:
 
     @staticmethod
     def _detect_kind(model_id: str) -> str:
+        # 优先读取 config.json 的 tts_model_type 键；无法确定时按目录名猜测
+        kind = detect_kind_from_config(model_id)
+        if kind:
+            return kind
         lower = model_id.lower().replace("-", "").replace("_", "")
         if "tokenizer" in lower:
             return "unknown"
