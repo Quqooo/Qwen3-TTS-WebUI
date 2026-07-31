@@ -1,5 +1,4 @@
 import { ref, computed, onBeforeUnmount } from "vue"
-import AudioPlayer from "../../components/audio/AudioPlayer.vue"
 import { synthesisApi, getBlobDuration, pcm16ToWav } from "../../api/synthesis"
 import type { ModelKind, SynthesisRequest, GenerationParams as GenParams } from "../../types"
 import { useUserConfig } from "../useUserConfig"
@@ -11,7 +10,10 @@ export interface SynthesisSessionOptions {
 }
 
 export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessionOptions) {
-  const AudioPlayerRef = ref<InstanceType<typeof AudioPlayer> | null>(null)
+  const audioPlayerRef = ref<{ appendChunk: (chunk: Uint8Array, sampleRate: number) => void; endStream: () => void; stopStream: () => void; resetVisual: () => void } | null>(null)
+  const bindAudioPlayer = (instance: unknown) => {
+    audioPlayerRef.value = instance as typeof audioPlayerRef.value
+  }
 
   const text = ref("")
   const outputFormat = ref("wav")
@@ -59,11 +61,11 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
     genElapsed.value = 0
     genTime.value = undefined
     rtf.value = undefined
-    AudioPlayerRef.value?.stopStream()
+    audioPlayerRef.value?.stopStream()
     resultAudioUrl.value = null
     resultDuration.value = undefined
     statusMessage.value = i18n.generating
-    AudioPlayerRef.value?.resetVisual()
+    audioPlayerRef.value?.resetVisual()
     genTimer = setInterval(() => {
       genElapsed.value = (performance.now() - genStartTime.value) / 1000
       if (streamingEnabled.value && pcmBuffer.value.length > 0) {
@@ -102,7 +104,7 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
               if (controller.signal.aborted || epoch !== generationEpoch) return
               pcmBuffer.value.push(chunk)
               if (pcmBuffer.value.length === 1) statusMessage.value = i18n.firstChunkArrived
-              AudioPlayerRef.value?.appendChunk(chunk, parseInt(sampleRate.value))
+              audioPlayerRef.value?.appendChunk(chunk, parseInt(sampleRate.value))
             },
             controller.signal,
           )
@@ -111,7 +113,7 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
       if (epoch !== generationEpoch) return
       clearInterval(genTimer)
       if (streamingEnabled.value) {
-        AudioPlayerRef.value?.endStream()
+        audioPlayerRef.value?.endStream()
         if (pcmBuffer.value.length > 0) {
           const sr = parseInt(sampleRate.value)
           const total = pcmBuffer.value.reduce((s, c) => s + c.length, 0)
@@ -141,7 +143,7 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
       clearInterval(genTimer)
       isGenerating.value = false
       statusMessage.value = e?.name === "AbortError" ? i18n.stopped : (e?.message ?? i18n.failed)
-      if (e?.name === "AbortError") AudioPlayerRef.value?.stopStream()
+      if (e?.name === "AbortError") audioPlayerRef.value?.stopStream()
     } finally {
       if (generationController === controller) generationController = null
     }
@@ -154,13 +156,13 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
     clearInterval(genTimer)
     isGenerating.value = false
     statusMessage.value = i18n.stopped
-    AudioPlayerRef.value?.stopStream()
+    audioPlayerRef.value?.stopStream()
   }
 
-  onBeforeUnmount(() => { generationEpoch++; clearInterval(genTimer); generationController?.abort(); AudioPlayerRef.value?.stopStream() })
+  onBeforeUnmount(() => { generationEpoch++; clearInterval(genTimer); generationController?.abort(); audioPlayerRef.value?.stopStream() })
 
   return {
-    AudioPlayerRef,
+    bindAudioPlayer,
     text,
     outputFormat,
     sampleRate,

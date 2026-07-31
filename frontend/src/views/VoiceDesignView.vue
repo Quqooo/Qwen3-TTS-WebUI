@@ -18,6 +18,7 @@ const { selectedModel, models, selectedLang, languageOptions } = useModelSelecti
 const voiceDescription = ref("")
 
 const {
+  bindAudioPlayer,
   text, outputFormat, sampleRate, gain, emitEvery, decodeWindow, maxFrames,
   splitMode, streamingEnabled, splitChars, isGenerating, genElapsed,
   resultAudioUrl, resultDuration, genTime, rtf, statusMessage, genParams,
@@ -62,6 +63,7 @@ const {
 
     <template #right>
       <SynthesisOutputCard
+        :ref="bindAudioPlayer"
         i18n-prefix="views.voiceDesign"
         :result-audio-url="resultAudioUrl"
         :result-duration="resultDuration"

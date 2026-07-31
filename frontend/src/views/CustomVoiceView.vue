@@ -18,6 +18,7 @@ const { selectedModel, models, selectedLang, speakerOptions, languageOptions, se
 const instruct = ref("")
 
 const {
+  bindAudioPlayer,
   text, outputFormat, sampleRate, gain, emitEvery, decodeWindow, maxFrames,
   splitMode, streamingEnabled, splitChars, isGenerating, genElapsed,
   resultAudioUrl, resultDuration, genTime, rtf, statusMessage, genParams,
@@ -68,6 +69,7 @@ const {
 
     <template #right>
       <SynthesisOutputCard
+        :ref="bindAudioPlayer"
         i18n-prefix="views.customVoice"
         :result-audio-url="resultAudioUrl"
         :result-duration="resultDuration"

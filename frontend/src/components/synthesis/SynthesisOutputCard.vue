@@ -1,6 +1,16 @@
 <script setup lang="ts">
+import { ref } from "vue"
 import { Download, Save } from "@lucide/vue"
 import AudioPlayer from "../audio/AudioPlayer.vue"
+
+const audioPlayerRef = ref<InstanceType<typeof AudioPlayer> | null>(null)
+
+defineExpose({
+  appendChunk: (chunk: Uint8Array, sampleRate: number) => audioPlayerRef.value?.appendChunk(chunk, sampleRate),
+  endStream: () => audioPlayerRef.value?.endStream(),
+  stopStream: () => audioPlayerRef.value?.stopStream(),
+  resetVisual: () => audioPlayerRef.value?.resetVisual(),
+})
 
 defineProps<{
   i18nPrefix: string
@@ -24,6 +34,7 @@ defineEmits<{
     <h3 class="text-sm font-medium mb-3">{{ $t(`${i18nPrefix}.outputAudio`) }}</h3>
 
     <AudioPlayer
+      ref="audioPlayerRef"
       :audio-url="resultAudioUrl"
       :duration="resultDuration"
       :streaming="streamingEnabled"

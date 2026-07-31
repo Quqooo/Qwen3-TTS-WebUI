@@ -52,6 +52,7 @@ function onRefAudio(file: File | null) {
 }
 
 const {
+  bindAudioPlayer,
   text, outputFormat, sampleRate, gain, emitEvery, decodeWindow, maxFrames,
   splitMode, streamingEnabled, splitChars, isGenerating, genElapsed,
   resultAudioUrl, resultDuration, genTime, rtf, statusMessage, genParams,
@@ -182,6 +183,7 @@ onMounted(async () => {
 
     <template #right>
       <SynthesisOutputCard
+        :ref="bindAudioPlayer"
         i18n-prefix="views.base"
         :result-audio-url="resultAudioUrl"
         :result-duration="resultDuration"
