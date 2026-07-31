@@ -301,6 +301,15 @@ function onUploadInput(ev: Event) {
                 <span class="text-muted-foreground">{{ $t('components.modelConfigPanel.xVectorOnly') }}</span>
               </label>
             </template>
+            <div v-if="modelStore.isFasterBranch" class="space-y-1.5">
+              <label class="text-[10px] text-muted-foreground">{{ $t('components.modelConfigPanel.instruct') }}</label>
+              <AutoTextarea
+                :model-value="modelValue.instruct"
+                :rows="2"
+                :placeholder="$t('components.modelConfigPanel.instructPlaceholder')"
+                @update:model-value="patch({ instruct: $event })"
+              />
+            </div>
           </template>
           <template #voice_file>
             <div class="space-y-1.5">
@@ -311,6 +320,15 @@ function onUploadInput(ev: Event) {
                 :placeholder="$t('components.modelConfigPanel.existingVoicePlaceholder')"
                 filterable
                 @update:model-value="patch({ voiceFile: $event })"
+              />
+            </div>
+            <div v-if="modelStore.isFasterBranch" class="space-y-1.5">
+              <label class="text-[10px] text-muted-foreground">{{ $t('components.modelConfigPanel.instruct') }}</label>
+              <AutoTextarea
+                :model-value="modelValue.instruct"
+                :rows="2"
+                :placeholder="$t('components.modelConfigPanel.instructPlaceholder')"
+                @update:model-value="patch({ instruct: $event })"
               />
             </div>
           </template>

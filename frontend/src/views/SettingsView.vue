@@ -111,6 +111,7 @@ async function saveSettings() {
       voice_dir: voiceDir.value,
       max_seq_len: maxSeqLen.value,
     })
+    modelStore.setBackendBranch(res.backend_branch)
     settingsCache = {
       gpuDevices: res.gpu_devices,
       maxConcurrent: res.max_concurrent_models,

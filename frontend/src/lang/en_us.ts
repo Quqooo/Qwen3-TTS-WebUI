@@ -84,6 +84,8 @@ export const en_us = {
     base: {
       title: 'Base',
       cloneSource: 'Clone Source',
+      instruct: 'Instruction (optional)',
+      instructPlaceholder: 'e.g. Read in a calm, slow, and expressive tone',
       inputText: 'Input Text',
       inputTextPlaceholder: 'Enter text to synthesize...',
       outputAudio: 'Output Audio',

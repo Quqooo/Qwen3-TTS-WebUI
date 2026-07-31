@@ -106,6 +106,7 @@ class TTSBranch(ABC):
         x_vector_only: bool = False,
         voice_file: Optional[str] = None,
         generation_params: Optional[Dict[str, Any]] = None,
+        instruct: Optional[str] = None,
     ) -> Tuple[List[np.ndarray], int]:
         """Base 模型：语音克隆生成
 
@@ -116,6 +117,7 @@ class TTSBranch(ABC):
         ref_text: 参考文本
         x_vector_only: 是否仅使用说话人嵌入（不使用 ICL）
         voice_file: 音色文件路径（与 ref_audio/ref_text 互斥）
+        instruct: 可选生成指令（由支持 Base instruct 的后端使用）
         generation_params: 生成参数（do_sample, top_k, top_p, temperature 等）
 
         返回: (音频列表, 采样率)
@@ -180,6 +182,7 @@ class TTSBranch(ABC):
         overlap_samples: int = 0,
         max_frames: int = 10000,
         generation_params: Optional[Dict[str, Any]] = None,
+        instruct: Optional[str] = None,
     ) -> Generator[Tuple[np.ndarray, int], None, None]:
         """Base 模型：流式语音克隆生成
 

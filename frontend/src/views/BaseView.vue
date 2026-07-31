@@ -17,10 +17,12 @@ import VoiceSaveDialog from "../components/common/VoiceSaveDialog.vue"
 import { useModelSelection } from "../composables/synthesis/useModelSelection"
 import { useSynthesisSession } from "../composables/synthesis/useSynthesisSession"
 import { useVoiceResult } from "../composables/synthesis/useVoiceResult"
+import { useModelStore } from "../stores/model"
 import { voicesApi } from "../api/voices"
 import { t } from "../lang"
 
 const { selectedModel, models, selectedLang, languageOptions } = useModelSelection({ kind: "base" })
+const modelStore = useModelStore()
 
 const sourceMode = ref<"upload" | "voice">("upload")
 const sourceSegments = computed(() => [
@@ -33,6 +35,7 @@ const refAudioName = ref<string | null>(null)
 const refTrimStart = ref(0)
 const refTrimEnd = ref(0)
 const refText = ref("")
+const instruct = ref("")
 const xvecOnly = ref(false)
 const voiceFiles = ref<{ value: string; label: string }[]>([])
 const selectedVoice = ref("")
@@ -81,6 +84,7 @@ const {
         ? { ref_audio: refAudioDataUrl, ref_text: refTextValue }
         : { voice_file: voiceFileValue }),
       x_vector_only: sourceMode.value === "upload" ? (xvecOnly.value || undefined) : undefined,
+      instruct: modelStore.isFasterBranch ? (instruct.value.trim() || undefined) : undefined,
     }
   },
 })
@@ -142,6 +146,14 @@ onMounted(async () => {
               <AppCheckbox v-model="xvecOnly" :label="$t('common.xVectorOnly')" />
             </div>
           </Transition>
+          <div v-if="modelStore.isFasterBranch" class="space-y-1.5">
+            <label class="label">{{ $t('views.base.instruct') }}</label>
+            <AutoTextarea
+              v-model="instruct"
+              :rows="2"
+              :placeholder="$t('views.base.instructPlaceholder')"
+            />
+          </div>
         </template>
         <template #voice>
           <AppSelect
@@ -150,6 +162,14 @@ onMounted(async () => {
             :placeholder="$t('views.base.voiceNamePlaceholder')"
             filterable
           />
+          <div v-if="modelStore.isFasterBranch" class="space-y-1.5">
+            <label class="label">{{ $t('views.base.instruct') }}</label>
+            <AutoTextarea
+              v-model="instruct"
+              :rows="2"
+              :placeholder="$t('views.base.instructPlaceholder')"
+            />
+          </div>
         </template>
       </SegmentPanel>
 

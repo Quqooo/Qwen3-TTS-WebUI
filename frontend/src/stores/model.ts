@@ -2,6 +2,7 @@ import { defineStore } from "pinia"
 import { ref, computed } from "vue"
 import type { ModelInfo, ModelKind, ModelCacheStatus, WorkerStatus } from "../types"
 import { modelsApi } from "../api/models"
+import { settingsApi } from "../api/settings"
 import { createCacheWebSocket } from "../api/ws"
 
 export const useModelStore = defineStore("model", () => {
@@ -14,6 +15,8 @@ export const useModelStore = defineStore("model", () => {
   })
   const workerStatus = ref<WorkerStatus>({ alive: false, error: null })
   const wsConnected = ref(false)
+  const backendBranch = ref("")
+  const isFasterBranch = computed(() => backendBranch.value === "andimarafioti/faster-qwen3-tts")
 
   const activeModel = computed(() =>
     availableModels.value.find((m) => m.id === activeModelId.value) ?? null
@@ -54,10 +57,16 @@ export const useModelStore = defineStore("model", () => {
   async function fetchModels() {
     loading.value = true
     try {
-      const res = await modelsApi.list()
-      availableModels.value = res.models
-    } catch {
-      // keep current
+      const [modelsResult, settingsResult] = await Promise.allSettled([
+        modelsApi.list(),
+        settingsApi.get(),
+      ])
+      if (modelsResult.status === "fulfilled") {
+        availableModels.value = modelsResult.value.models
+      }
+      if (settingsResult.status === "fulfilled") {
+        backendBranch.value = settingsResult.value.backend_branch
+      }
     } finally {
       loading.value = false
     }
@@ -65,6 +74,10 @@ export const useModelStore = defineStore("model", () => {
 
   function setModels(models: ModelInfo[]) {
     availableModels.value = models
+  }
+
+  function setBackendBranch(branch: string) {
+    backendBranch.value = branch
   }
 
   function setActiveModel(id: string | null) {
@@ -86,6 +99,8 @@ export const useModelStore = defineStore("model", () => {
     cacheStatus,
     workerStatus,
     wsConnected,
+    backendBranch,
+    isFasterBranch,
     activeModel,
     activeModelKind,
     baseModels,
@@ -95,6 +110,7 @@ export const useModelStore = defineStore("model", () => {
     startCacheWatcher,
     fetchModels,
     setModels,
+    setBackendBranch,
     setActiveModel,
     refreshCacheStatus,
   }

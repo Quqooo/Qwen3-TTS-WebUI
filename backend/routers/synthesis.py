@@ -54,7 +54,7 @@ class SynthesisRequest(BaseModel):
     """合成请求体
 
     覆盖三种模型类型的所有参数。实际生效的参数取决于 kind：
-    - base: 使用 ref_audio/ref_text/voice_file/x_vector_only
+    - base: 使用 ref_audio/ref_text/voice_file/x_vector_only，可选 instruct
     - custom_voice: 使用 speaker/instruct
     - voice_design: 使用 voice_description
     """
@@ -65,7 +65,7 @@ class SynthesisRequest(BaseModel):
 
     # 模型类型相关参数
     speaker: Optional[str] = None                       # kind=custom_voice 时必填
-    instruct: Optional[str] = None                      # kind=custom_voice 可选
+    instruct: Optional[str] = None                      # kind=base/custom_voice 可选
     voice_description: Optional[str] = None             # kind=voice_design 时必填
 
     # Base 模型参数（仅 kind=base 可填）
@@ -356,6 +356,7 @@ async def _handle_base_synthesis(
             "overlap_samples": body.overlap_samples,
             "max_frames": body.max_frames,
             "generation_params": gen_kwargs.get("generation_params"),
+            "instruct": body.instruct,
             "lease": gen_kwargs.get("lease"),
         }
         if voice_file_path:
@@ -384,7 +385,7 @@ async def _handle_base_synthesis(
             finish_stream=finish_stream,
         )
 
-    gen_fn_kwargs = {**gen_kwargs}
+    gen_fn_kwargs = {**gen_kwargs, "instruct": body.instruct}
     if voice_file_path:
         gen_fn_kwargs["voice_file"] = voice_file_path
     else:

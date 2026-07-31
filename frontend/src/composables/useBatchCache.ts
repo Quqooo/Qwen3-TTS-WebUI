@@ -97,7 +97,13 @@ export function useBatchCache(opts: {
       if (data.persistent !== true) return
       persistent.value = true
       rows.value = data.rows.map((r: any) => {
-        const row: any = { ...r, isPlaying: false, audioUrl: undefined, errorMessage: undefined }
+        const row: any = {
+          ...r,
+          instruct: typeof r.instruct === "string" ? r.instruct : "",
+          isPlaying: false,
+          audioUrl: undefined,
+          errorMessage: undefined,
+        }
         if (typeof row.refAudioUrl === "string" && row.refAudioUrl.startsWith("blob:")) {
           row._restoreRefAudio = true
           row._refAudioName = row.refAudioName

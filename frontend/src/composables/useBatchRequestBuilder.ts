@@ -1,5 +1,6 @@
 import type { BatchRow } from "./useBatchTypes"
 import type { SynthesisRequest } from "../types"
+import { useModelStore } from "../stores/model"
 
 async function blobUrlToDataUrl(url: string): Promise<string> {
   const response = await fetch(url)
@@ -16,6 +17,8 @@ async function blobUrlToDataUrl(url: string): Promise<string> {
 }
 
 export function useBatchRequestBuilder() {
+  const modelStore = useModelStore()
+
   async function buildRequest(row: BatchRow): Promise<SynthesisRequest> {
     const request: SynthesisRequest = {
       model: row.model,
@@ -31,6 +34,7 @@ export function useBatchRequestBuilder() {
     }
 
     if (row.modelKind === "base") {
+      request.instruct = modelStore.isFasterBranch ? (row.instruct?.trim() || undefined) : undefined
       if (row.cloneSource === "voice_file") {
         request.voice_file = row.voiceFile
       } else if (row.cloneSource === "upload" && row.refAudioUrl) {

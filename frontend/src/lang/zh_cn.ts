@@ -84,6 +84,8 @@ export const zh_cn = {
     base: {
       title: '声音克隆',
       cloneSource: '克隆来源',
+      instruct: '控制指令（可选）',
+      instructPlaceholder: '例如：用沉稳、缓慢且富有感情的语气朗读',
       inputText: '待合成文本',
       inputTextPlaceholder: '输入要合成的文本...',
       outputAudio: '输出音频',

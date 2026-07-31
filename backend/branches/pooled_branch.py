@@ -170,12 +170,14 @@ class PooledWorkerBranch(TTSBranch):
                          ref_audio: Optional[Any], ref_text: Optional[str],
                          x_vector_only: bool, voice_file: Optional[str],
                          generation_params: Optional[Dict[str, Any]],
-                         cmd_name: str) -> Dict[str, Any]:
+                         cmd_name: str, instruct: Optional[str] = None) -> Dict[str, Any]:
         cmd: Dict[str, Any] = {
             "cmd": cmd_name, "model_path": model_path,
             "text": text, "language": language,
             "generation_params": generation_params or {},
         }
+        if instruct:
+            cmd["instruct"] = instruct
         if voice_file:
             vf = voice_manager.resolve_voice_file(voice_file)
             if not vf:
@@ -202,11 +204,11 @@ class PooledWorkerBranch(TTSBranch):
         ref_audio: Optional[Any] = None, ref_text: Optional[str] = None,
         x_vector_only: bool = False, voice_file: Optional[str] = None,
         generation_params: Optional[Dict[str, Any]] = None,
-        lease: Any = None,
+        lease: Any = None, instruct: Optional[str] = None,
     ) -> Tuple[List[np.ndarray], int]:
         cmd = self._build_clone_cmd(model_path, text, language, ref_audio, ref_text,
                                     x_vector_only, voice_file, generation_params,
-                                    "generate_voice_clone")
+                                    "generate_voice_clone", instruct)
         async with self._route(model_path, lease=lease) as (w, _gpu):
             resp = await w.send_cmd_detached(cmd)
         return self._decode_audio_response(resp)
@@ -284,12 +286,12 @@ class PooledWorkerBranch(TTSBranch):
         emit_every_frames: int = 8, decode_window_frames: int = 80,
         overlap_samples: int = 0, max_frames: int = 10000,
         generation_params: Optional[Dict[str, Any]] = None,
-        lease: Any = None,
+        lease: Any = None, instruct: Optional[str] = None,
     ) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
         self._check_streaming()
         cmd = self._build_clone_cmd(model_path, text, language, ref_audio, ref_text,
                                     x_vector_only, voice_file, generation_params,
-                                    "stream_generate_voice_clone")
+                                    "stream_generate_voice_clone", instruct)
         cmd["stream_params"] = self._stream_params(
             emit_every_frames, decode_window_frames, overlap_samples, max_frames)
         async for item in self._stream(cmd, model_path, lease=lease):

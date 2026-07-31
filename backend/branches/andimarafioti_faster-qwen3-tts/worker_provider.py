@@ -65,6 +65,9 @@ class FasterQwenProvider(WorkerProvider):
     def _clone_kwargs(self, model: Any, request: Dict[str, Any]) -> Dict[str, Any]:
         kwargs = {"text": request["text"], "language": request.get("language", "Auto"),
                   **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}
+        instruct = request.get("instruct")
+        if instruct:
+            kwargs["instruct"] = instruct
         if request.get("voice_clone_prompt") is not None:
             kwargs["voice_clone_prompt"] = request["voice_clone_prompt"]
         elif request.get("ref_audio") is not None:
