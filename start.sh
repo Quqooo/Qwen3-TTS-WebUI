@@ -12,7 +12,7 @@ if [ ! -f "$VENV_PY" ]; then
     python3 -m venv "$VENV"
 fi
 
-"$VENV_PIP" install "$ROOT" > /dev/null 2>&1
+"$VENV_PIP" install -e "$ROOT" > /dev/null 2>&1
 
 if [ ! -d "$FRONTEND/node_modules" ]; then
     (cd "$FRONTEND" && pnpm install)

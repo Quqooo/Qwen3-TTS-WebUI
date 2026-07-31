@@ -18,7 +18,7 @@ if not exist "%VENV_PY%" (
     )
 )
 
-"%VENV_PY%" -m pip install "%ROOT%" >nul 2>&1
+"%VENV_PY%" -m pip install -e "%ROOT%" >nul 2>&1
 
 if not exist "%FRONTEND%\node_modules" (
     cd /d "%FRONTEND%"
@@ -45,6 +45,7 @@ if errorlevel 1 (
 )
 :skip_build
 
+cd /d "%ROOT%"
 "%VENV_PY%" -m uvicorn backend.main:app --port 8000 --host localhost
 pause
 endlocal
