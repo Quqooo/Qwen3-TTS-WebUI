@@ -5,6 +5,7 @@ import logging
 from typing import Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 from ..cache import get_cache_manager
 from ..config import settings
@@ -60,14 +61,30 @@ async def _build_worker_message():
         })
 
 
+async def _safe_send(ws: WebSocket, message: str) -> bool:
+    """向单个连接发送消息；失败（通常连接已断）返回 False，由调用方清理。
+
+    注意：send_text 失败时 starlette 会把该连接的 application_state 置为
+    DISCONNECTED，此副作用无法撤销——后续该连接的 receive_text 会抛
+    RuntimeError，由 ws_cache 的状态检查与异常捕获兜底。
+    """
+    try:
+        await ws.send_text(message)
+        return True
+    except Exception:
+        return False
+
+
 async def _broadcast(message: str):
+    if not _connections:
+        return
     dead: Set[WebSocket] = set()
-    for ws in _connections:
-        try:
-            await ws.send_text(message)
-        except Exception:
+    # 快照遍历，避免 ws_cache 的 finally 并发 discard 导致 set 遍历期修改
+    for ws in list(_connections):
+        if not await _safe_send(ws, message):
             dead.add(ws)
-    _connections.difference_update(dead)
+    if dead:
+        _connections.difference_update(dead)
 
 
 async def broadcast_cache_status():
@@ -116,13 +133,28 @@ async def ws_cache(websocket: WebSocket):
         await _broadcast(await _build_worker_message())
 
         while True:
+            # 状态检查：_broadcast 向本连接 send 失败会把 application_state
+            # 置为 DISCONNECTED，此时不应再调用 receive_text（会抛 RuntimeError）
+            if websocket.application_state != WebSocketState.CONNECTED:
+                break
             try:
                 msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
-                if msg == "ping":
+            except asyncio.TimeoutError:
+                break  # 空闲超时，主动断开
+            except (WebSocketDisconnect, RuntimeError):
+                break  # 客户端断开 / 状态已被外部置为断开
+            if msg == "ping":
+                try:
                     await websocket.send_text("pong")
-            except (asyncio.TimeoutError, WebSocketDisconnect):
-                break
-    except WebSocketDisconnect:
-        pass
+                except Exception:
+                    break  # 回 pong 失败，连接已不可用
+    except (WebSocketDisconnect, RuntimeError):
+        pass  # 兜底：连接失效相关的异常一律按断开处理，避免冒泡成 ASGI 未处理异常
     finally:
         _connections.discard(websocket)
+        # 确保连接关闭；可能已被置为 DISCONNECTED，忽略二次异常
+        try:
+            if websocket.application_state == WebSocketState.CONNECTED:
+                await websocket.close()
+        except Exception:
+            pass
