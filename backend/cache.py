@@ -452,6 +452,40 @@ class ModelCacheManager:
         best = min(candidates, key=lambda c: (pool.instance_inflight(c[1], c[2]), pool._priority_index(c[2])))
         return best[0], best[2]
 
+    async def enforce_max_concurrent(self) -> List[Dict[str, str]]:
+        """max_concurrent_models 调低后，淘汰超出上限的实例（LRU 优先）。"""
+        pool = self.pool
+        tracker = get_tracker()
+        evicted: List[Dict[str, str]] = []
+
+        async def _unload_when_idle(mid: str, path: str, gpu: str) -> None:
+            async with self._op_lock:
+                await self._wait_instance_idle(mid, path, gpu)
+                # 等待期间上限可能已被调高：该 GPU 实例数不再超限则放弃卸载。
+                # 检查与卸载共用 _op_lock，多个后台任务串行执行，不会过度淘汰。
+                if len(pool.gpu_models(gpu)) <= settings.max_concurrent_models:
+                    _logger.debug("Max_concurrent raised; skip unload of %s (GPU %s)", mid, gpu)
+                    return
+                await self._unload_instance(mid, path, gpu)
+            _logger.info("Evicted for max_concurrent: %s (GPU %s)", mid, gpu)
+
+        async with self._op_lock:
+            for gpu in settings.gpu_list():
+                models = sorted(
+                    pool.gpu_models(gpu),
+                    key=lambda p: self._last_used(os.path.basename(p), gpu),
+                )
+                while len(models) > settings.max_concurrent_models:
+                    path = models.pop(0)
+                    mid = os.path.basename(path)
+                    if tracker.is_busy(mid, gpu) or pool.instance_inflight(path, gpu) > 0:
+                        asyncio.create_task(_unload_when_idle(mid, path, gpu))
+                    else:
+                        await self._unload_instance(mid, path, gpu)
+                        evicted.append({"id": mid, "gpu": gpu})
+                        _logger.info("Evicted for max_concurrent: %s (GPU %s)", mid, gpu)
+        return evicted
+
     async def clear(self) -> None:
         async with self._op_lock:
             async with self._lock:
