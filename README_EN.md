@@ -19,7 +19,7 @@ A full-featured web interface for Qwen3-TTS built with **FastAPI + Vue 3**, repl
 - **Streaming Playback** — Real-time PCM streaming generation with progressive playback
 - **Batch Processing** — Tabular multi-task editing, timeline alignment, SRT subtitle import/generation, ZIP backup export
 - **Voice Management** — Voice file CRUD, preview, and editing
-- **Hot Model Management** — Multi-model concurrency control, LRU eviction, idle auto-unload
+- **Hot Model Management** — Multi-GPU / multi-model concurrency control, LRU eviction, idle auto-unload for models and workers
 - **Multi-Backend Branches** — Supports 3 Qwen3-TTS implementations ([QwenLM](https://github.com/QwenLM/Qwen3-TTS) / [streaming](https://github.com/rekuenkdr/Qwen3-TTS-streaming) / [faster](https://github.com/andimarafioti/faster-qwen3-tts))
 
 ---
@@ -103,8 +103,10 @@ Edit `backend/settings.json`:
 
 ```json
 {
+  "gpu_devices": "0",
   "max_concurrent_models": 1,
   "idle_unload_seconds": 600,
+  "worker_idle_unload_seconds": 600,
   "backend_branch": "andimarafioti/faster-qwen3-tts",
   "project_dir": "",
   "env_dir": "",
@@ -127,8 +129,10 @@ Edit `backend/settings.json`:
 
 | Field | Description |
 |-------|-------------|
-| `max_concurrent_models` | Maximum number of concurrently loaded models |
-| `idle_unload_seconds` | Idle model auto-unload timeout (seconds) |
+| `gpu_devices` | GPU devices to use, e.g. `"2 0 3-5"` or `"0,1"`, defaults to `"0"`. Order determines loading priority; range syntax supported |
+| `max_concurrent_models` | Maximum distinct models per GPU |
+| `idle_unload_seconds` | Model idle timeout (seconds); models unused beyond this duration are auto-unloaded |
+| `worker_idle_unload_seconds` | Worker idle timeout (seconds); workers with no cached models are stopped after this duration |
 | `backend_branch` | Backend branch (see options below) |
 | `project_dir` | Qwen3-TTS project directory |
 | `env_dir` | Python virtual environment path for Qwen3-TTS |
@@ -170,10 +174,11 @@ Browser (Vue 3 SPA)
 FastAPI Web Server (lightweight, no PyTorch loaded)
     │
     ▼ TCP (length-prefixed JSON)
-Worker Subprocess (loads Qwen3-TTS model, handles GPU inference)
+Worker Subprocess Pool (one Worker per GPU, handles GPU inference)
 ```
 
 - **Process Isolation** — Web server and model inference run in separate processes; the web process never imports PyTorch, keeping dependencies decoupled
+- **Multi-GPU Parallelism** — Each GPU runs an independent Worker subprocess; multiple GPUs can load models and run inference simultaneously
 - **Pluggable Branches** — The `branches/` directory is loaded via dynamic discovery
 - **Unified Worker** — All branches share the same Worker TCP protocol, adapted via `worker_provider.py` plugins
 - **WebSocket Push** — Model cache status, Worker status, and inference count are synced to the frontend in real time

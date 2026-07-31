@@ -19,7 +19,7 @@
 - **流式播放** — 支持实时 PCM 流式生成与边下边播
 - **批量处理** — 表格化多任务编辑、时间轴对齐、SRT 字幕导入/生成、ZIP 备份导出
 - **音色管理** — 音色文件 CRUD、预览、编辑
-- **模型热管理** — 多模型并发控制、LRU 淘汰、空闲自动卸载
+- **模型热管理** — 多 GPU / 多模型并发控制、LRU 淘汰、模型及 Worker 空闲自动卸载
 - **多后端分支** — 支持 3 种 Qwen3-TTS 实现（[QwenLM](https://github.com/QwenLM/Qwen3-TTS) / [streaming](https://github.com/rekuenkdr/Qwen3-TTS-streaming) / [faster](https://github.com/andimarafioti/faster-qwen3-tts)）
 
 ---
@@ -103,8 +103,10 @@ pnpm build
 
 ```json
 {
+  "gpu_devices": "0",
   "max_concurrent_models": 1,
   "idle_unload_seconds": 600,
+  "worker_idle_unload_seconds": 600,
   "backend_branch": "andimarafioti/faster-qwen3-tts",
   "project_dir": "",
   "env_dir": "",
@@ -127,8 +129,10 @@ pnpm build
 
 | 字段 | 说明 |
 |------|------|
-| `max_concurrent_models` | 同时加载的最大模型数 |
-| `idle_unload_seconds` | 空闲模型自动卸载时间（秒） |
+| `gpu_devices` | 使用的 GPU 设备列表，如 `"2 0 3-5"` 或 `"0,1"`，留空默认 `"0"`。书写顺序即为加载优先级，支持区间语法 |
+| `max_concurrent_models` | 每 GPU 最多同时加载的不同模型数 |
+| `idle_unload_seconds` | 模型空闲超时（秒），超过该时间未使用自动卸载 |
+| `worker_idle_unload_seconds` | Worker 空闲超时（秒），无模型缓存的 Worker 超过该时间自动停止 |
 | `backend_branch` | 后端分支（见下方可选值） |
 | `project_dir` | Qwen3-TTS 项目目录 |
 | `env_dir` | Qwen3-TTS 的 Python 虚拟环境路径 |
@@ -170,10 +174,11 @@ pnpm build
 FastAPI Web Server (轻量，不加载 PyTorch)
     │
     ▼ TCP (length-prefixed JSON)
-Worker 子进程 (加载 Qwen3-TTS 模型，处理 GPU 推理)
+Worker 子进程池 (每 GPU 一个 Worker，处理 GPU 推理)
 ```
 
 - **进程隔离** — Web 服务器和模型推理运行在不同进程中，Web 进程不导入 PyTorch，实现依赖分离
+- **多卡并行** — 每 GPU 启动独立 Worker 子进程，支持多卡同时加载模型和并行推理
 - **插件化分支** — `branches/` 目录通过动态扫描加载
 - **统一 Worker** — 所有分支共用同一套 Worker TCP 协议，通过 `worker_provider.py` 插件适配
 - **WebSocket 推送** — 模型缓存状态、Worker 状态、推理计数实时同步至前端
