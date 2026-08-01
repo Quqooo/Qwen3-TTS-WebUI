@@ -155,19 +155,37 @@ def save_settings():
 # ── 模型路径解析 ─────────────────────────────────────────────────
 
 
+def validate_model_id(model_id: str) -> str:
+    """校验 API 模型标识，仅允许 models 目录下的单级目录名。"""
+    if not isinstance(model_id, str) or not model_id:
+        raise ValueError("Model ID must be a non-empty string")
+    if model_id != model_id.strip():
+        raise ValueError("Model ID must not contain leading or trailing whitespace")
+    if model_id in (".", "..") or "/" in model_id or "\\" in model_id:
+        raise ValueError("Model must be an ID, not a filesystem path")
+    if os.path.isabs(model_id) or os.path.splitdrive(model_id)[0] or "\x00" in model_id:
+        raise ValueError("Model must be an ID, not a filesystem path")
+    return model_id
+
+
 def resolve_model_path(model_id: str) -> str:
-    """将模型 ID（目录名）解析为绝对路径"""
-    if os.path.isabs(model_id):
-        return model_id
+    """将模型 ID 解析为 model_dir 内的绝对目录路径。"""
+    validate_model_id(model_id)
     model_dir = settings.model_dir
     if not model_dir and settings.project_dir:
         model_dir = os.path.join(settings.project_dir, "models")
     if not model_dir:
         raise ValueError(f"model_dir not configured, cannot resolve model id: {model_id}")
-    full = os.path.join(model_dir, model_id)
-    if not os.path.isdir(full):
+
+    root = Path(model_dir).resolve()
+    full = (root / model_id).resolve()
+    try:
+        full.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Model ID escapes model_dir: {model_id}") from exc
+    if not full.is_dir():
         raise ValueError(f"Model not found: {model_id} (resolved: {full})")
-    return os.path.abspath(full)
+    return str(full)
 
 
 # ── 虚拟环境检测 ─────────────────────────────────────────────────

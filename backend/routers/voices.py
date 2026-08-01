@@ -199,6 +199,8 @@ async def upload_voice(body: VoiceUploadRequest):
 
     except (HTTPException, APIError):
         raise
+    except ValueError as e:
+        raise_error(status_code=400, detail="Invalid voice input", debug=str(e))
     except NotSupportedError as e:
         raise_error(status_code=400, detail="Operation not supported", debug=str(e))
     except Exception as e:
@@ -240,7 +242,10 @@ async def edit_voice(body: VoiceEditRequest):
         if not model_id:
             raise_error(status_code=400, detail="No model available for audio update")
 
-        model_path = resolve_model_path(model_id)
+        try:
+            model_path = resolve_model_path(model_id)
+        except ValueError as e:
+            raise_error(status_code=400, detail="Invalid model ID", debug=str(e))
 
         from ..audio import download_audio
 

@@ -58,7 +58,7 @@ class SynthesisRequest(BaseModel):
     - custom_voice: 使用 speaker/instruct
     - voice_design: 使用 voice_description
     """
-    model: str                                          # 模型路径或 ID
+    model: str                                          # model_dir 下的模型 ID
     text: str                                           # 合成文本
     language: str = "Auto"                              # 语言
     kind: str = "base"                                  # 模型类型: base/custom_voice/voice_design

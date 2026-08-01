@@ -5,6 +5,7 @@
 与具体后端分支无关的通用音频处理函数。
 """
 import base64
+import binascii
 import io
 import ipaddress
 import os
@@ -14,8 +15,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urlparse
-from urllib.request import urlopen, Request as URLRequest
+from urllib.error import HTTPError
+from urllib.parse import urljoin, urlparse
+from urllib.request import build_opener, HTTPRedirectHandler, Request as URLRequest
 
 import numpy as np
 import soundfile as sf
@@ -51,6 +53,10 @@ def _has_ffmpeg() -> bool:
 
 _HAS_FFMPEG = _has_ffmpeg()
 
+MAX_AUDIO_BYTES = 200 * 1024 * 1024
+_DOWNLOAD_CHUNK_BYTES = 64 * 1024
+_MAX_REDIRECTS = 5
+
 _BLOCKED_NETS = [
     ipaddress.IPv4Network("10.0.0.0/8"),
     ipaddress.IPv4Network("172.16.0.0/12"),
@@ -63,37 +69,142 @@ _BLOCKED_NETS = [
 ]
 
 
-def _validate_remote_url(url: str):
-    """Raise ValueError if URL resolves to a loopback, private, or link-local address."""
-    hostname = urlparse(url).hostname
+def _is_blocked_address(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return whether an address must not be contacted by remote audio fetches."""
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_multicast
+        or addr.is_reserved
+        or addr.is_unspecified
+        or any(addr in net for net in _BLOCKED_NETS)
+    )
+
+
+def _validate_remote_url(url: str) -> None:
+    """Raise ValueError unless URL is HTTP(S) and resolves only to public addresses."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Remote audio URL must use HTTP or HTTPS")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Remote audio URL must not contain credentials")
+
+    hostname = parsed.hostname
     if not hostname:
         raise ValueError("Invalid URL: no hostname")
 
     try:
-        ip = ipaddress.ip_address(hostname)
-        if any(ip in net for net in _BLOCKED_NETS):
+        literal_addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        literal_addr = None
+
+    if literal_addr is not None:
+        if _is_blocked_address(literal_addr):
             raise ValueError(f"URL resolves to a blocked address: {hostname}")
         return
-    except ValueError:
-        pass
 
     try:
-        addrs = socket.getaddrinfo(hostname, None)
-    except socket.gaierror:
+        addrs = socket.getaddrinfo(hostname, parsed.port, type=socket.SOCK_STREAM)
+    except (socket.gaierror, ValueError) as exc:
+        raise ValueError(f"Cannot resolve hostname: {hostname}") from exc
+
+    if not addrs:
         raise ValueError(f"Cannot resolve hostname: {hostname}")
 
     for _family, _type, _proto, _cname, sockaddr in addrs:
         ip = sockaddr[0]
         try:
             addr = ipaddress.ip_address(ip)
-            if any(addr in net for net in _BLOCKED_NETS):
-                raise ValueError(f"URL resolves to a blocked address: {hostname} → {ip}")
-        except ValueError:
-            pass
+        except ValueError as exc:
+            raise ValueError(f"Hostname resolved to an invalid address: {ip}") from exc
+        if _is_blocked_address(addr):
+            raise ValueError(f"URL resolves to a blocked address: {hostname} -> {ip}")
+
+
+class _RejectRedirectHandler(HTTPRedirectHandler):
+    """Disable urllib's automatic redirects so every hop can be revalidated."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _decode_audio_data_uri(url: str) -> bytes:
+    """Decode an audio data URI without allowing more than MAX_AUDIO_BYTES."""
+    match = re.fullmatch(r"data:audio/[\w.+-]+;base64,([A-Za-z0-9+/=\r\n]+)", url)
+    if not match:
+        raise ValueError("Invalid data URI format")
+
+    encoded = match.group(1)
+    compact = "".join(encoded.split())
+    if len(compact) % 4 != 0:
+        raise ValueError("Invalid base64 audio data")
+    padding = len(compact) - len(compact.rstrip("="))
+    decoded_size = (len(compact) // 4) * 3 - padding
+    if decoded_size > MAX_AUDIO_BYTES:
+        raise ValueError("Audio input exceeds the 50 MB limit")
+
+    try:
+        raw = base64.b64decode(compact, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("Invalid base64 audio data") from exc
+    if len(raw) > MAX_AUDIO_BYTES:
+        raise ValueError("Audio input exceeds the 50 MB limit")
+    return raw
+
+
+def _download_remote_audio(url: str) -> Tuple[bytes, str]:
+    """Download public HTTP(S) audio with redirect and 50 MB enforcement."""
+    opener = build_opener(_RejectRedirectHandler())
+    current_url = url
+
+    for redirect_count in range(_MAX_REDIRECTS + 1):
+        _validate_remote_url(current_url)
+        req = URLRequest(current_url, headers={"User-Agent": "Qwen3-TTS-API/1.0"})
+        try:
+            resp = opener.open(req, timeout=60)
+        except HTTPError as exc:
+            if exc.code not in (301, 302, 303, 307, 308):
+                raise
+            if redirect_count >= _MAX_REDIRECTS:
+                raise ValueError("Too many redirects while downloading audio") from exc
+            location = exc.headers.get("Location")
+            if not location:
+                raise ValueError("Audio redirect is missing a Location header") from exc
+            current_url = urljoin(current_url, location)
+            continue
+
+        with resp:
+            final_url = resp.geturl()
+            _validate_remote_url(final_url)
+            content_length = resp.headers.get("Content-Length")
+            if content_length is not None:
+                try:
+                    declared_size = int(content_length)
+                except ValueError as exc:
+                    raise ValueError("Invalid audio Content-Length header") from exc
+                if declared_size < 0:
+                    raise ValueError("Invalid audio Content-Length header")
+                if declared_size > MAX_AUDIO_BYTES:
+                    raise ValueError("Audio input exceeds the 50 MB limit")
+
+            chunks = []
+            total = 0
+            while True:
+                chunk = resp.read(_DOWNLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_AUDIO_BYTES:
+                    raise ValueError("Audio input exceeds the 50 MB limit")
+                chunks.append(chunk)
+            return b"".join(chunks), final_url
+
+    raise ValueError("Too many redirects while downloading audio")
 
 
 def download_audio(url: str) -> Tuple[np.ndarray, int]:
-    """从 URL 或 data URI 下载音频数据
+    """从 URL 或 data URI 下载音频数据，输入上限为 50 MB。
 
     支持：
     - http(s)://  URL
@@ -101,33 +212,21 @@ def download_audio(url: str) -> Tuple[np.ndarray, int]:
     返回 (waveform, sample_rate)。
     """
     parsed = urlparse(url)
-    if parsed.scheme.startswith("data"):
-        match = re.match(r"data:audio/\w+;base64,(.+)", url)
-        if not match:
-            raise ValueError("Invalid data URI format")
-        raw = base64.b64decode(match.group(1))
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp.write(raw)
-            tmp_path = tmp.name
-        try:
-            wav, sr = sf.read(tmp_path)
-        finally:
-            os.unlink(tmp_path)
-        return wav, sr
+    if parsed.scheme == "data":
+        raw = _decode_audio_data_uri(url)
+        suffix = ".wav"
     else:
-        _validate_remote_url(url)
-        req = URLRequest(url, headers={"User-Agent": "Qwen3-TTS-API/1.0"})
-        with urlopen(req, timeout=60) as resp:
-            data = resp.read()
-        suffix = Path(urlparse(url).path).suffix or ".wav"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
-        try:
-            wav, sr = sf.read(tmp_path)
-        finally:
-            os.unlink(tmp_path)
-        return wav, int(sr)
+        raw, final_url = _download_remote_audio(url)
+        suffix = Path(urlparse(final_url).path).suffix or ".wav"
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(raw)
+        tmp_path = tmp.name
+    try:
+        wav, sr = sf.read(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+    return wav, int(sr)
 
 
 def apply_gain(wav: np.ndarray, gain_db: float) -> np.ndarray:

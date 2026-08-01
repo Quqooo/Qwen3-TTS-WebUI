@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ..cache import get_cache_manager
-from ..config import require_qwen, settings
+from ..config import require_qwen, resolve_model_path, settings, validate_model_id
 from ..errors import APIError, raise_error
 from ..model_meta import detect_kind_from_config, get_model_meta
 from .ws import broadcast_cache_status
@@ -97,12 +97,23 @@ class ModelIdRequest(BaseModel):
     model_kind: str = "base"
 
 
+def _require_model_id(model_id: str) -> str:
+    """Convert invalid or unknown API model IDs into a 400 response."""
+    try:
+        validate_model_id(model_id)
+        resolve_model_path(model_id)
+    except ValueError as exc:
+        raise_error(status_code=400, detail="Invalid model ID", debug=str(exc))
+    return model_id
+
+
 @router.post("/models/load")
 async def load_model(body: ModelIdRequest):
     """加载指定模型到缓存"""
+    model_id = _require_model_id(body.model)
     try:
         cache = get_cache_manager()
-        await cache.load_model(body.model, body.model_kind)
+        await cache.load_model(model_id, body.model_kind)
         asyncio.create_task(broadcast_cache_status())
         return {"status": "loaded", "model": body.model}
     except APIError:
@@ -120,9 +131,10 @@ class UnloadModelRequest(BaseModel):
 @router.post("/models/unload")
 async def unload_model(body: UnloadModelRequest):
     """从缓存中卸载指定模型"""
+    model_id = _require_model_id(body.model)
     try:
         cache = get_cache_manager()
-        await cache.unload_model(body.model)
+        await cache.unload_model(model_id)
         asyncio.create_task(broadcast_cache_status())
         return {"status": "unloaded", "model": body.model}
     except APIError:
@@ -152,4 +164,4 @@ async def model_meta(model_id: str):
 
     模型加载后自动缓存；未缓存时返回默认值。
     """
-    return get_model_meta(model_id)
+    return get_model_meta(_require_model_id(model_id))
