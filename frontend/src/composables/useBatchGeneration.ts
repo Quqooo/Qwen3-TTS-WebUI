@@ -3,6 +3,7 @@ import type { BatchRow } from "./useBatchTypes"
 import type { SynthesisRequest, ComposeSegment } from "../types"
 import { synthesisApi, composeApi, getBlobDuration } from "../api/synthesis"
 import { audioCacheDB } from "../utils/audioCacheDB"
+import { deleteBatchWaveform } from "../utils/batchWaveformCache"
 import JSZip from "jszip"
 import { t } from "../lang"
 
@@ -130,6 +131,7 @@ export function useBatchGeneration(opts: GenEngineOpts) {
       controller.signal.throwIfAborted()
       if (epoch !== generationEpoch || runningControllers.get(rowId) !== controller) return
       const previousAudioUrl = row.audioUrl
+      deleteBatchWaveform(row.id)
       row.audioUrl = URL.createObjectURL(blob)
       revokeBlobUrl(previousAudioUrl)
       audioCacheDB.put(row.id, blob)

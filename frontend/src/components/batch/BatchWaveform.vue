@@ -3,10 +3,16 @@ import { ref, computed, watch, nextTick, onUnmounted } from "vue"
 import WaveSurfer from "wavesurfer.js"
 import { primaryColor, waveformGray } from "../../theme"
 import { useTheme } from "../../composables/useTheme"
+import {
+  getBatchWaveform,
+  getBatchWaveformRevision,
+  setBatchWaveform,
+} from "../../utils/batchWaveformCache"
 
 const { isDark } = useTheme()
 
 const props = withDefaults(defineProps<{
+  rowId: string
   audioUrl?: string
   progress?: number
 }>(), {
@@ -21,6 +27,7 @@ const wrapper = ref<HTMLDivElement | null>(null)
 const container = ref<HTMLDivElement | null>(null)
 
 let ws: WaveSurfer | null = null
+let initToken = 0
 
 const progressPct = computed(() => Math.min(1, Math.max(0, props.progress)))
 
@@ -28,13 +35,16 @@ function destroy() {
   if (ws) { ws.destroy(); ws = null }
 }
 
-async function init(url: string) {
+async function init(rowId: string, url: string) {
+  const token = ++initToken
+  const cacheRevision = getBatchWaveformRevision(rowId)
   destroy()
   await nextTick()
   await new Promise(r => requestAnimationFrame(r))
-  if (!wrapper.value) return
+  if (token !== initToken || !wrapper.value) return
 
-  ws = WaveSurfer.create({
+  const cached = getBatchWaveform(rowId)
+  const instance = WaveSurfer.create({
     container: wrapper.value,
     waveColor: waveformGray(),
     progressColor: primaryColor(),
@@ -46,11 +56,32 @@ async function init(url: string) {
     cursorWidth: 0,
     interact: false,
   })
-  ws.load(url)
-  ws.on("ready", () => { ws?.seekTo(props.progress) })
+  ws = instance
+  instance.on("ready", () => {
+    if (token !== initToken || ws !== instance) return
+    instance.seekTo(props.progress)
+    if (!cached && getBatchWaveformRevision(rowId) === cacheRevision) {
+      setBatchWaveform(rowId, {
+        peaks: instance.exportPeaks({ channels: 1, maxLength: 2000, precision: 1000 }),
+        duration: instance.getDuration(),
+      })
+    }
+  })
+  try {
+    await instance.load(url, cached?.peaks, cached?.duration)
+  } catch {
+    // Audio may be replaced or revoked while a virtual row is being recycled.
+  }
 }
 
-watch(() => props.audioUrl, (url) => { if (url) init(url) }, { immediate: true })
+watch(
+  () => [props.rowId, props.audioUrl] as const,
+  ([rowId, url]) => {
+    if (url) init(rowId, url)
+    else { initToken++; destroy() }
+  },
+  { immediate: true },
+)
 
 watch(() => props.progress, (val) => {
   if (ws) ws.seekTo(val)
@@ -94,6 +125,7 @@ function onMouseUp() {
 }
 
 onUnmounted(() => {
+  initToken++
   destroy()
   window.removeEventListener("mousemove", onMouseMove)
   window.removeEventListener("mouseup", onMouseUp)

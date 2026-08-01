@@ -180,6 +180,7 @@ defineExpose({ scrollToStart, scrollToEnd })
             <div class="flex-1 relative h-6 min-w-0">
               <BatchWaveform
                 v-if="props.rows[virtualRow.index].audioState === 'done'"
+                :row-id="props.rows[virtualRow.index].id"
                 :audio-url="props.rows[virtualRow.index].audioUrl"
                 :progress="props.rowProgress[props.rows[virtualRow.index].id] ?? 0"
                 @seek="emit('seekWaveform', props.rows[virtualRow.index].id, $event)"

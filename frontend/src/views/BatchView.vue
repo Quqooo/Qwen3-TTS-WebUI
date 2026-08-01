@@ -25,6 +25,7 @@ import { useBatchRowInteractions } from "../composables/useBatchRowInteractions"
 import { usePageKeepAlive } from "../composables/usePageKeepAlive"
 import type { BatchRow } from "../composables/useBatchTypes"
 import { audioCacheDB } from "../utils/audioCacheDB"
+import { clearBatchWaveforms, deleteBatchWaveform } from "../utils/batchWaveformCache"
 import { useModelStore } from "../stores/model"
 import { useVoiceStore } from "../stores/voice"
 
@@ -215,6 +216,7 @@ async function clearAllTasks() {
   selectedIndexes.value = new Set()
   editingIndex.value = -1
   refAudioCached.clear()
+  clearBatchWaveforms()
   await audioCacheDB.clear()
   for (const key of Object.keys(rowProgress)) delete rowProgress[key]
   generationTime.value = "--:--"
@@ -419,7 +421,7 @@ function removeRow(idx: number) {
   revokeBlobUrl(removedRow?.refAudioUrl)
   const rowId = removedRow?.id
   if (rowId) {
-    audioCacheDB.remove(rowId); audioCacheDB.removeRefAudio(rowId); refAudioCached.delete(rowId); delete rowProgress[rowId]
+    audioCacheDB.remove(rowId); audioCacheDB.removeRefAudio(rowId); refAudioCached.delete(rowId); deleteBatchWaveform(rowId); delete rowProgress[rowId]
     destroyRowAudio(rowId)
   }
   adjustIndexesAfterRemove(idx)
@@ -442,6 +444,7 @@ async function generateRow(idx: number) {
     controller.signal.throwIfAborted()
     if (rowGenerationControllers.get(row.id) !== controller) return
     const previousAudioUrl = row.audioUrl
+    deleteBatchWaveform(row.id)
     row.audioUrl = URL.createObjectURL(blob)
     if (previousAudioUrl?.startsWith("blob:")) URL.revokeObjectURL(previousAudioUrl)
     audioCacheDB.put(row.id, blob)

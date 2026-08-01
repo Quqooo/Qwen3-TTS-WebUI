@@ -37,6 +37,7 @@ function syncHeight() {
   const el = wrapper.value
   const content = inner.value
   if (!el || !content) return
+  if (content.getClientRects().length === 0) return
   el.style.height = props.animateHeight ? content.scrollHeight + "px" : "auto"
 }
 
