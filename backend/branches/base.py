@@ -180,6 +180,7 @@ class TTSBranch(ABC):
         emit_every_frames: int = 8,
         decode_window_frames: int = 80,
         overlap_samples: int = 0,
+        chunk_size: int = 12,
         max_frames: int = 10000,
         generation_params: Optional[Dict[str, Any]] = None,
         instruct: Optional[str] = None,
@@ -187,6 +188,7 @@ class TTSBranch(ABC):
         """Base 模型：流式语音克隆生成
 
         参数同 generate_voice_clone，额外支持流式控制参数。
+        chunk_size 仅 Faster 分支生效（每块 codec 步数，12 ≈ 1 秒）。
         以生成器方式逐个返回音频块。
         默认抛出 NotSupportedError，分支覆盖此方法以支持流式。
         """
@@ -202,12 +204,14 @@ class TTSBranch(ABC):
         emit_every_frames: int = 8,
         decode_window_frames: int = 80,
         overlap_samples: int = 0,
+        chunk_size: int = 12,
         max_frames: int = 10000,
         generation_params: Optional[Dict[str, Any]] = None,
     ) -> Generator[Tuple[np.ndarray, int], None, None]:
         """CustomVoice 模型：流式固定说话人语音合成
 
         参数同 generate_custom_voice，额外支持流式控制参数。
+        chunk_size 仅 Faster 分支生效（每块 codec 步数，12 ≈ 1 秒）。
         以生成器方式逐个返回音频块。
         默认抛出 NotSupportedError，分支覆盖此方法以支持流式。
         """
@@ -222,12 +226,14 @@ class TTSBranch(ABC):
         emit_every_frames: int = 8,
         decode_window_frames: int = 80,
         overlap_samples: int = 0,
+        chunk_size: int = 12,
         max_frames: int = 10000,
         generation_params: Optional[Dict[str, Any]] = None,
     ) -> Generator[Tuple[np.ndarray, int], None, None]:
         """VoiceDesign 模型：流式自然语言音色设计语音合成
 
         参数同 generate_voice_design，额外支持流式控制参数。
+        chunk_size 仅 Faster 分支生效（每块 codec 步数，12 ≈ 1 秒）。
         以生成器方式逐个返回音频块。
         默认抛出 NotSupportedError，分支覆盖此方法以支持流式。
         """

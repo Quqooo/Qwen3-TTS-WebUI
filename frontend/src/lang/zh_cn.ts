@@ -404,8 +404,6 @@ export const zh_cn = {
     },
     audioPlayer: {
       scrollForVolume: '滚动滚轮调整音量',
-      buffered: '缓冲',
-      streaming: '流式',
     },
     generationParams: {
       title: '生成参数',
@@ -433,7 +431,9 @@ export const zh_cn = {
       splitChars: '切分符号',
       emit: 'emit:',
       window: 'window:',
+      overlap: 'overlap:',
       maxFrames: 'max_frames:',
+      chunk: 'chunk_size:',
       defaultSplitChars: '.。!！?？\\n',
     },
     batchAudioOutput: {

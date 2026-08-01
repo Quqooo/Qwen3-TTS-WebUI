@@ -37,7 +37,6 @@ defineEmits<{
       ref="audioPlayerRef"
       :audio-url="resultAudioUrl"
       :duration="resultDuration"
-      :streaming="streamingEnabled"
       :is-generating="isGenerating && !resultAudioUrl"
     />
 

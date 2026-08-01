@@ -79,6 +79,7 @@ class SynthesisRequest(BaseModel):
     emit_every_frames: int = 8
     decode_window_frames: int = 80
     overlap_samples: int = 0
+    chunk_size: Optional[int] = Field(12, ge=1)         # 每块 codec 步数，仅 Faster 流式生效（12 ≈ 1 秒），非流式丢弃
     max_frames: StrictInt = Field(10000, ge=1, le=_MAX_GENERATION_LENGTH)
 
     # 输出参数
@@ -119,6 +120,8 @@ class SynthesisRequest(BaseModel):
                 self.decode_window_frames = 80
             if self.overlap_samples != 0:
                 self.overlap_samples = 0
+            # 与 Faster 源码一致：非流式 API 不接受 chunk_size，直接丢弃
+            self.chunk_size = None
         else:
             if self.output_format != "pcm":
                 raise ValueError("streaming only supports pcm format")
@@ -354,6 +357,7 @@ async def _handle_base_synthesis(
             "emit_every_frames": body.emit_every_frames,
             "decode_window_frames": body.decode_window_frames,
             "overlap_samples": body.overlap_samples,
+            "chunk_size": body.chunk_size,
             "max_frames": body.max_frames,
             "generation_params": gen_kwargs.get("generation_params"),
             "instruct": body.instruct,
@@ -429,6 +433,7 @@ async def _handle_custom_voice_synthesis(
                 emit_every_frames=body.emit_every_frames,
                 decode_window_frames=body.decode_window_frames,
                 overlap_samples=body.overlap_samples,
+                chunk_size=body.chunk_size,
                 max_frames=body.max_frames,
                 generation_params=gen_kwargs.get("generation_params"),
                 lease=gen_kwargs.get("lease"),
@@ -473,6 +478,7 @@ async def _handle_voice_design_synthesis(
                 emit_every_frames=body.emit_every_frames,
                 decode_window_frames=body.decode_window_frames,
                 overlap_samples=body.overlap_samples,
+                chunk_size=body.chunk_size,
                 max_frames=body.max_frames,
                 generation_params=gen_kwargs.get("generation_params"),
                 lease=gen_kwargs.get("lease"),

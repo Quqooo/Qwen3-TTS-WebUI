@@ -125,9 +125,11 @@ async def update_settings(data: SettingsUpdate):
         cm._branch = None
         from ..branches import clear_branch_cache
         clear_branch_cache()
-        from .ws import broadcast_cache_status, broadcast_worker_status
+        from .ws import broadcast_backend_status, broadcast_cache_status, broadcast_worker_status
         asyncio.create_task(broadcast_cache_status())
         asyncio.create_task(broadcast_worker_status())
+        if branch_changed:
+            asyncio.create_task(broadcast_backend_status())
 
     if max_concurrent_changed and data.max_concurrent_models < old_max_concurrent:
         # 调低并发上限后，若当前缓存实例数超出新上限，

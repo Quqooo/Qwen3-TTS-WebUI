@@ -9,7 +9,6 @@ import { parseSrtContent } from "../../utils/subtitleParser"
 const props = defineProps<{
   audioUrl?: string | null
   duration?: number
-  streaming?: boolean
   isGenerating?: boolean
   subtitles?: string
 }>()
@@ -832,13 +831,10 @@ defineExpose({
           class="max-w-[80%] truncate text-center text-foreground"
           :title="currentSubtitle"
         >{{ currentSubtitle }}</span>
-        <span v-else-if="streamActive" class="italic text-muted-foreground/40">
-          {{ formatTime(streamBufferedTime) }} {{ $t('components.audioPlayer.buffered') }}
-        </span>
       </div>
       <span v-if="streamFinished">{{ formatTime(displayDuration) }}</span>
       <span v-else-if="duration !== undefined">{{ formatTime(duration) }}</span>
-      <span v-else-if="streaming" class="italic text-muted-foreground/40">{{ $t('components.audioPlayer.streaming') }}</span>
+      <span v-else-if="streamActive" class="italic text-muted-foreground/40">{{ formatTime(streamBufferedTime) }}</span>
       <span v-else>{{ formatTime(audioDuration) }}</span>
     </div>
 

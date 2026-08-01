@@ -37,5 +37,6 @@ class FasterBranch(PooledWorkerBranch):
         }
 
     def _stream_params(self, emit_every_frames: int, decode_window_frames: int,
-                       overlap_samples: int, max_frames: int) -> Dict[str, Any]:
-        return {"chunk_size": 12}
+                       overlap_samples: int, max_frames: int,
+                       chunk_size: int = 12) -> Dict[str, Any]:
+        return {"chunk_size": chunk_size}

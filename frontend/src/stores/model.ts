@@ -47,6 +47,7 @@ export const useModelStore = defineStore("model", () => {
       (msg) => {
         if (msg.type === "cache") cacheStatus.value = msg.data
         else if (msg.type === "worker") workerStatus.value = msg.data
+        else if (msg.type === "backend") backendBranch.value = msg.data.backend_branch
       },
       (connected) => {
         wsConnected.value = connected

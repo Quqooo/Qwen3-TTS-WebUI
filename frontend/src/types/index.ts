@@ -52,10 +52,16 @@ export interface TrackerStatus {
   inference_total: number
 }
 
+export interface BackendInfo {
+  backend_branch: string
+  backend_branch_options: string[]
+}
+
 export type WsMessage =
   | { type: "cache"; data: ModelCacheStatus }
   | { type: "worker"; data: WorkerStatus }
   | { type: "tracker"; data: TrackerStatus }
+  | { type: "backend"; data: BackendInfo }
 
 export interface GenerationParams {
   do_sample?: boolean

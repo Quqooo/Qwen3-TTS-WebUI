@@ -13,13 +13,16 @@ import VoiceSaveDialog from "../components/common/VoiceSaveDialog.vue"
 import { useModelSelection } from "../composables/synthesis/useModelSelection"
 import { useSynthesisSession } from "../composables/synthesis/useSynthesisSession"
 import { useVoiceResult } from "../composables/synthesis/useVoiceResult"
+import { useModelStore } from "../stores/model"
+
+const modelStore = useModelStore()
 
 const { selectedModel, models, selectedLang, languageOptions } = useModelSelection({ kind: "voice_design" })
 const voiceDescription = ref("")
 
 const {
   bindAudioPlayer,
-  text, outputFormat, sampleRate, gain, emitEvery, decodeWindow, maxFrames,
+  text, outputFormat, sampleRate, gain, emitEvery, decodeWindow, overlapSamples, maxFrames, chunkSize,
   splitMode, streamingEnabled, splitChars, isGenerating, genElapsed,
   resultAudioUrl, resultDuration, genTime, rtf, statusMessage, genParams,
   synthesisText, generate, stop,
@@ -81,7 +84,10 @@ const {
         v-model:split-chars="splitChars"
         v-model:emit-every="emitEvery"
         v-model:decode-window="decodeWindow"
+        v-model:overlap-samples="overlapSamples"
         v-model:max-frames="maxFrames"
+        v-model:chunk-size="chunkSize"
+        :faster-branch="modelStore.isFasterBranch"
       />
 
       <SynthesisOutputControls

@@ -44,8 +44,9 @@ class PooledWorkerBranch(TTSBranch):
         return {}
 
     def _stream_params(self, emit_every_frames: int, decode_window_frames: int,
-                       overlap_samples: int, max_frames: int) -> Dict[str, Any]:
-        """流式参数，由各分支覆盖"""
+                       overlap_samples: int, max_frames: int,
+                       chunk_size: int = 12) -> Dict[str, Any]:
+        """流式参数，由各分支覆盖。chunk_size 仅 Faster 分支使用，其他分支不发送。"""
         return {
             "emit_every_frames": emit_every_frames,
             "decode_window_frames": decode_window_frames,
@@ -284,7 +285,7 @@ class PooledWorkerBranch(TTSBranch):
         ref_audio: Optional[Any] = None, ref_text: Optional[str] = None,
         x_vector_only: bool = False, voice_file: Optional[str] = None,
         emit_every_frames: int = 8, decode_window_frames: int = 80,
-        overlap_samples: int = 0, max_frames: int = 10000,
+        overlap_samples: int = 0, chunk_size: int = 12, max_frames: int = 10000,
         generation_params: Optional[Dict[str, Any]] = None,
         lease: Any = None, instruct: Optional[str] = None,
     ) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
@@ -293,7 +294,7 @@ class PooledWorkerBranch(TTSBranch):
                                     x_vector_only, voice_file, generation_params,
                                     "stream_generate_voice_clone", instruct)
         cmd["stream_params"] = self._stream_params(
-            emit_every_frames, decode_window_frames, overlap_samples, max_frames)
+            emit_every_frames, decode_window_frames, overlap_samples, max_frames, chunk_size)
         async for item in self._stream(cmd, model_path, lease=lease):
             yield item
 
@@ -301,7 +302,7 @@ class PooledWorkerBranch(TTSBranch):
         self, model_path: str, text: str, speaker: str,
         language: str = "Auto", instruct: Optional[str] = None,
         emit_every_frames: int = 8, decode_window_frames: int = 80,
-        overlap_samples: int = 0, max_frames: int = 10000,
+        overlap_samples: int = 0, chunk_size: int = 12, max_frames: int = 10000,
         generation_params: Optional[Dict[str, Any]] = None,
         lease: Any = None,
     ) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
@@ -311,7 +312,7 @@ class PooledWorkerBranch(TTSBranch):
             "text": text, "speaker": speaker, "language": language,
             "instruct": instruct or "",
             "stream_params": self._stream_params(
-                emit_every_frames, decode_window_frames, overlap_samples, max_frames),
+                emit_every_frames, decode_window_frames, overlap_samples, max_frames, chunk_size),
             "generation_params": generation_params or {},
         }
         async for item in self._stream(cmd, model_path, lease=lease):
@@ -321,7 +322,7 @@ class PooledWorkerBranch(TTSBranch):
         self, model_path: str, text: str, instruct: str,
         language: str = "Auto",
         emit_every_frames: int = 8, decode_window_frames: int = 80,
-        overlap_samples: int = 0, max_frames: int = 10000,
+        overlap_samples: int = 0, chunk_size: int = 12, max_frames: int = 10000,
         generation_params: Optional[Dict[str, Any]] = None,
         lease: Any = None,
     ) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
@@ -330,7 +331,7 @@ class PooledWorkerBranch(TTSBranch):
             "cmd": "stream_generate_voice_design", "model_path": model_path,
             "text": text, "instruct": instruct, "language": language,
             "stream_params": self._stream_params(
-                emit_every_frames, decode_window_frames, overlap_samples, max_frames),
+                emit_every_frames, decode_window_frames, overlap_samples, max_frames, chunk_size),
             "generation_params": generation_params or {},
         }
         async for item in self._stream(cmd, model_path, lease=lease):

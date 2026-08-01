@@ -2,6 +2,7 @@ import { ref, computed, onBeforeUnmount } from "vue"
 import { synthesisApi, getBlobDuration, pcm16ToWav } from "../../api/synthesis"
 import type { ModelKind, SynthesisRequest, GenerationParams as GenParams } from "../../types"
 import { useUserConfig } from "../useUserConfig"
+import { useModelStore } from "../../stores/model"
 import { t } from "../../lang"
 
 export interface SynthesisSessionOptions {
@@ -21,10 +22,14 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
   const gain = ref(0)
   const emitEvery = ref(4)
   const decodeWindow = ref(80)
+  const overlapSamples = ref(0)
   const maxFrames = ref(10000)
+  const chunkSize = ref(12)
   const splitMode = ref<"" | "split" | "stream">("")
   const streamingEnabled = computed(() => splitMode.value === "stream")
   const splitChars = ref(".。!！?？\\n")
+
+  const modelStore = useModelStore()
 
   const isGenerating = ref(false)
   const genStartTime = ref(0)
@@ -89,10 +94,15 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
         output_sample_rate: parseInt(sampleRate.value),
         gain: gain.value,
         streaming: streamingEnabled.value,
-        emit_every_frames: emitEvery.value,
-        decode_window_frames: decodeWindow.value,
-        overlap_samples: 0,
-        max_frames: streamingEnabled.value ? maxFrames.value : undefined,
+        // Faster 分支只传 chunk_size；其他分支不传 chunk_size
+        ...(modelStore.isFasterBranch ? {
+          chunk_size: chunkSize.value,
+        } : {
+          emit_every_frames: emitEvery.value,
+          decode_window_frames: decodeWindow.value,
+          overlap_samples: overlapSamples.value,
+          max_frames: streamingEnabled.value ? maxFrames.value : undefined,
+        }),
         split_enabled: splitMode.value === "split",
         split_characters: splitMode.value === "split" ? [splitChars.value] : undefined,
         generation_params: { ...genParams.value },
@@ -169,7 +179,9 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
     gain,
     emitEvery,
     decodeWindow,
+    overlapSamples,
     maxFrames,
+    chunkSize,
     splitMode,
     streamingEnabled,
     splitChars,

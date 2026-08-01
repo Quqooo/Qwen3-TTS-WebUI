@@ -404,8 +404,6 @@ export const en_us = {
     },
     audioPlayer: {
       scrollForVolume: 'Scroll to adjust volume',
-      buffered: 'buffered',
-      streaming: 'streaming',
     },
     generationParams: {
       title: 'Generation Parameters',
@@ -433,7 +431,9 @@ export const en_us = {
       splitChars: 'Split Characters',
       emit: 'emit:',
       window: 'window:',
+      overlap: 'overlap:',
       maxFrames: 'max frames:',
+      chunk: 'chunk_size:',
       defaultSplitChars: '.!?\\n',
     },
     batchAudioOutput: {

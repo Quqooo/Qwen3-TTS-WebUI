@@ -11,12 +11,18 @@ withDefaults(defineProps<{
   splitChars?: string
   emitEvery?: number
   decodeWindow?: number
+  overlapSamples?: number
   maxFrames?: number
+  chunkSize?: number
+  fasterBranch?: boolean
 }>(), {
   splitChars: t('components.splitStreamPanel.defaultSplitChars'),
   emitEvery: 4,
   decodeWindow: 80,
+  overlapSamples: 0,
   maxFrames: 10000,
+  chunkSize: 12,
+  fasterBranch: false,
 })
 
 const emit = defineEmits<{
@@ -24,7 +30,9 @@ const emit = defineEmits<{
   (e: "update:splitChars", val: string): void
   (e: "update:emitEvery", val: number): void
   (e: "update:decodeWindow", val: number): void
+  (e: "update:overlapSamples", val: number): void
   (e: "update:maxFrames", val: number): void
+  (e: "update:chunkSize", val: number): void
 }>()
 
 const segments = computed<Segment[]>(() => [
@@ -53,7 +61,21 @@ const segments = computed<Segment[]>(() => [
       </div>
     </template>
     <template #stream>
-      <div class="flex flex-wrap items-center gap-3">
+      <div v-if="fasterBranch" class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
+          <span class="text-muted-foreground">{{ $t('components.splitStreamPanel.chunk') }}</span>
+          <input
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            :value="chunkSize"
+            :size="String(chunkSize).length || 2"
+            class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
+            @input="emit('update:chunkSize', parseInt(($event.target as HTMLInputElement).value) || 12)"
+          />
+        </div>
+      </div>
+      <div v-else class="flex flex-wrap items-center gap-3">
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
           <span class="text-muted-foreground">{{ $t('components.splitStreamPanel.emit') }}</span>
           <input
@@ -76,6 +98,18 @@ const segments = computed<Segment[]>(() => [
             :size="String(decodeWindow).length || 2"
             class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
             @input="emit('update:decodeWindow', parseInt(($event.target as HTMLInputElement).value) || 80)"
+          />
+        </div>
+        <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
+          <span class="text-muted-foreground">{{ $t('components.splitStreamPanel.overlap') }}</span>
+          <input
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            :value="overlapSamples"
+            :size="String(overlapSamples).length || 1"
+            class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
+            @input="emit('update:overlapSamples', parseInt(($event.target as HTMLInputElement).value) || 0)"
           />
         </div>
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">

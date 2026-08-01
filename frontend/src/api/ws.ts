@@ -3,7 +3,7 @@ import type { WsMessage } from "../types"
 type MessageCallback = (msg: WsMessage) => void
 type ConnectionCallback = (connected: boolean) => void
 
-const VALID_TYPES = new Set(["cache", "worker", "tracker"])
+const VALID_TYPES = new Set(["cache", "worker", "tracker", "backend"])
 
 function isWsMessage(value: unknown): value is WsMessage {
   return (

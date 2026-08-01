@@ -11,6 +11,7 @@ from ..cache import get_cache_manager
 from ..config import settings
 from ..model_meta import get_model_meta
 from ..tracker import get_tracker
+from ..branches import discover_branches
 
 _logger = logging.getLogger("qwen-webui.ws")
 
@@ -61,6 +62,17 @@ async def _build_worker_message():
         })
 
 
+def _build_backend_message():
+    """当前选中的后端分支及其可用选项。"""
+    return _encode({
+        "type": "backend",
+        "data": {
+            "backend_branch": settings.backend_branch,
+            "backend_branch_options": list(discover_branches().keys()),
+        },
+    })
+
+
 async def _safe_send(ws: WebSocket, message: str) -> bool:
     """向单个连接发送消息；失败（通常连接已断）返回 False，由调用方清理。
 
@@ -101,6 +113,13 @@ async def broadcast_worker_status():
     await _broadcast(await _build_worker_message())
 
 
+async def broadcast_backend_status():
+    """向所有已连接客户端推送当前后端信息。"""
+    if not _connections:
+        return
+    await _broadcast(_build_backend_message())
+
+
 async def _build_tracker_message():
     tracker = get_tracker()
     per_model = tracker.status()
@@ -131,6 +150,7 @@ async def ws_cache(websocket: WebSocket):
     try:
         await _broadcast(await _build_cache_message())
         await _broadcast(await _build_worker_message())
+        await _broadcast(_build_backend_message())
 
         while True:
             # 状态检查：_broadcast 向本连接 send 失败会把 application_state
