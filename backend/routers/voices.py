@@ -20,19 +20,19 @@ from ..voices import manager as voice_manager
 router = APIRouter(prefix="/api", tags=["voices"], dependencies=[Depends(require_qwen)])
 
 
-def _get_base_model_by_spk_dim(spk_dim: int) -> str:
-    """根据说话人嵌入维度在 models 目录中查找匹配的 Base 模型"""
+def _get_base_models_by_spk_dim(spk_dim: int) -> List[str]:
+    """返回说话人嵌入维度匹配的所有 Base 模型 ID。"""
     model_dir = settings.model_dir
     if not model_dir and settings.project_dir:
         model_dir = os.path.join(settings.project_dir, "models")
-    if not model_dir or not os.path.isdir(model_dir):
-        return ""
+    if not model_dir or not os.path.isdir(model_dir) or spk_dim <= 0:
+        return []
 
+    matches: List[str] = []
     for name in sorted(os.listdir(model_dir)):
-        if "Qwen3-TTS" not in name and "qwen3-tts" not in name.lower():
-            continue
-        path = os.path.join(model_dir, name)
-        if not os.path.isdir(path):
+        try:
+            path = resolve_model_path(name)
+        except ValueError:
             continue
         cfg_path = os.path.join(path, "config.json")
         if not os.path.isfile(cfg_path):
@@ -40,12 +40,20 @@ def _get_base_model_by_spk_dim(spk_dim: int) -> str:
         try:
             with open(cfg_path, encoding="utf-8") as f:
                 cfg = json.load(f)
-        except Exception:
+        except (OSError, json.JSONDecodeError):
             continue
-        spe = cfg.get("speaker_encoder_config") or {}
-        if spe.get("enc_dim") == spk_dim:
-            return name
-    return ""
+        if str(cfg.get("tts_model_type", "")).strip().lower() != "base":
+            continue
+        speaker_config = cfg.get("speaker_encoder_config")
+        if not isinstance(speaker_config, dict):
+            continue
+        try:
+            model_spk_dim = int(speaker_config.get("enc_dim", 0))
+        except (TypeError, ValueError):
+            continue
+        if model_spk_dim == spk_dim:
+            matches.append(name)
+    return matches
 
 
 @router.get("/voices")
@@ -77,13 +85,22 @@ async def get_voice(name: str):
     if not meta:
         raise_error(status_code=422, detail=f"Failed to parse voice metadata: {name}")
 
-    spk_dim = meta.get("_spk_dim", 0)
-    if spk_dim:
-        meta["model"] = _get_base_model_by_spk_dim(spk_dim)
+    try:
+        spk_dim = int(meta.get("_spk_dim", 0))
+    except (TypeError, ValueError):
+        spk_dim = 0
+    meta["model"] = _get_base_models_by_spk_dim(spk_dim)
     return meta
+
 
 class VoiceAudioPreviewRequest(BaseModel):
     load: bool = False
+
+
+def _get_base_model_by_spk_dim(spk_dim: int) -> str:
+    """返回首个兼容 Base 模型 ID，供需要单个模型的内部流程使用。"""
+    models = _get_base_models_by_spk_dim(spk_dim)
+    return models[0] if models else ""
 
 
 def _find_first_base_model_id() -> str:

@@ -2,7 +2,7 @@ import { api } from "./client"
 
 export interface VoiceMeta {
   customName: string
-  model: string
+  model: string[]
   text: string
   x_vector_only?: boolean
 }

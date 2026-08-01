@@ -302,7 +302,7 @@ export const zh_cn = {
       editVoice: '编辑音色',
       delete: '删除',
       model: '模型',
-      createdBy: '创建模型: ',
+      applicableModels: '适用模型: ',
       saveEdit: '保存修改',
       saveEditFailed: '保存修改失败',
       editSaved: '修改已保存',

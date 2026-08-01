@@ -289,7 +289,7 @@ async function saveEdit() {
         reader.readAsDataURL(blob)
       })
       changed.audio = base64
-      changed.model = selectedMeta.value.model || modelStore.baseModels[0]?.id || undefined
+      changed.model = selectedMeta.value.model[0] || modelStore.baseModels[0]?.id || undefined
     }
 
     await voicesApi.edit(changed)
@@ -467,7 +467,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="max-w-full mx-20">
-    <div class="flex gap-4 h-[calc(100vh-12rem)]">
+    <div class="flex gap-4 h-[calc(100vh-8rem)]">
       <!-- Left: New Voice Creator -->
       <div class="flex-[2] border rounded-lg p-4 space-y-3 overflow-auto">
         <h3 class="text-sm font-medium">{{ $t('views.voices.addVoice') }}</h3>
@@ -645,8 +645,8 @@ onBeforeUnmount(() => {
 
               <AppCheckbox v-model="editXvec" :label="$t('views.voices.xVectorOnly')" />
 
-              <div v-if="selectedMeta.model" class="text-xs text-muted-foreground">
-                {{ $t('views.voices.createdBy') }}{{ selectedMeta.model }}
+              <div v-if="selectedMeta.model.length" class="text-xs text-muted-foreground">
+                {{ $t('views.voices.applicableModels') }}{{ selectedMeta.model.join(', ') }}
               </div>
 
               <div class="flex gap-2 pt-2 flex-wrap items-center">

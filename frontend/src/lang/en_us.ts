@@ -302,7 +302,7 @@ export const en_us = {
       editVoice: 'Edit Voice',
       delete: 'Delete',
       model: 'Model',
-      createdBy: 'Created by: ',
+      applicableModels: 'Compatible models: ',
       saveEdit: 'Save Changes',
       saveEditFailed: 'Failed to save changes',
       editSaved: 'Changes saved',
