@@ -42,6 +42,7 @@ class WorkerProcess:
         self._writer: Optional[asyncio.StreamWriter] = None
         self._port: Optional[int] = None
         self._lock = asyncio.Lock()
+        self._cleanup_lock = asyncio.Lock()
         self._error: Optional[str] = None
         self._output_threads: List[threading.Thread] = []
         self._stderr_tail: Deque[str] = deque(maxlen=40)
@@ -88,6 +89,26 @@ class WorkerProcess:
         async with self._active_requests_changed:
             await self._active_requests_changed.wait_for(lambda: not self._active_requests)
 
+    @staticmethod
+    async def _close_writer(
+        writer: Optional[asyncio.StreamWriter], timeout: float = 1.0
+    ) -> None:
+        """Close a client connection without letting transport cleanup hang."""
+        if writer is None:
+            return
+        try:
+            writer.close()
+            await asyncio.wait_for(writer.wait_closed(), timeout=timeout)
+        except Exception:
+            # close() 已请求优雅关闭；若底层 transport 仍不收敛，则直接
+            # abort，避免遗留连接句柄继续拖住 Windows Proactor。
+            transport = getattr(writer, "transport", None)
+            if transport is not None:
+                try:
+                    transport.abort()
+                except Exception:
+                    pass
+
     async def _wait_for_request_after_cancel(
         self,
         request_id: str,
@@ -114,12 +135,9 @@ class WorkerProcess:
                 except Exception:
                     pass
         finally:
-            writer.close()
-            try:
-                await writer.wait_closed()
-            except Exception:
-                pass
+            # 请求已经完成即到达安全点；transport 清理不得阻止活动计数释放。
             await self._finish_request(request_id)
+            await self._close_writer(writer)
             self._logger.info("Worker request %s reached a safe stop point", request_id)
 
     def resolve_python(self) -> str:
@@ -257,40 +275,44 @@ class WorkerProcess:
         self._output_threads.append(thread)
 
     async def _cleanup(self, *, force: bool = False) -> None:
-        writer = self._writer
-        self._reader = None
-        self._writer = None
-        self._port = None
-        if writer:
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except Exception:
-                pass
+        async with self._cleanup_lock:
+            writer = self._writer
+            self._reader = None
+            self._writer = None
+            self._port = None
+            # Windows Proactor 在对端/事件循环异常时可能一直卡在
+            # wait_closed；正常停止和强停都不能被 transport 清理永久阻塞。
+            await self._close_writer(writer)
 
-        process = self._process
-        if process is not None and process.poll() is None:
-            try:
-                if force:
-                    process.kill()
-                else:
-                    process.terminate()
-                await asyncio.to_thread(process.wait, 3)
-            except Exception:
+            process = self._process
+            if process is not None and process.poll() is None:
                 try:
-                    process.kill()
-                    await asyncio.to_thread(process.wait, 3)
+                    if force:
+                        process.kill()
+                    else:
+                        process.terminate()
+                    await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=3.0)
                 except Exception:
-                    pass
-        if process is not None:
-            for stream in (process.stdout, process.stderr):
-                if stream is not None:
                     try:
-                        stream.close()
+                        process.kill()
+                        await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=3.0)
                     except Exception:
-                        pass
-        self._process = None
-        self._output_threads = []
+                        self._logger.error(
+                            "Worker process did not exit after forced termination (gpu=%s, pid=%s)",
+                            self.gpu_id,
+                            process.pid,
+                        )
+            exited = process is None or process.poll() is not None
+            if process is not None and exited:
+                for stream in (process.stdout, process.stderr):
+                    if stream is not None:
+                        try:
+                            stream.close()
+                        except Exception:
+                            pass
+            self._process = None if exited else process
+            if exited:
+                self._output_threads = []
 
     async def stop(self) -> None:
         # Model inference runs in a worker thread and cannot be terminated safely.
@@ -309,6 +331,10 @@ class WorkerProcess:
         async with self._active_requests_changed:
             self._active_requests.clear()
             self._active_requests_changed.notify_all()
+        if self.alive:
+            raise RuntimeError(
+                f"Worker (GPU {self.gpu_id}, PID {self.pid}) survived forced termination"
+            )
 
     @staticmethod
     async def _write_command(
@@ -416,14 +442,10 @@ class WorkerProcess:
             self._logger.error("Detached worker command failed: %s", exc)
             return None
         finally:
-            if writer:
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except Exception:
-                    pass
+            # 先释放活动计数，连接关闭只是后续有界清理，不能反向阻塞 stop()。
             if not defer_finish:
                 await self._finish_request(request_id)
+            await self._close_writer(writer)
 
     async def stream_cmd(
         self, cmd: dict, timeout: float = 600.0
@@ -455,12 +477,6 @@ class WorkerProcess:
             self._logger.error("Worker stream failed: %s", exc)
             return
         finally:
-            if writer:
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except Exception:
-                    pass
             if not completed and self.alive and model_path:
                 defer_finish = True
                 asyncio.create_task(
@@ -468,3 +484,4 @@ class WorkerProcess:
                 )
             if not defer_finish:
                 await self._finish_request(request_id)
+            await self._close_writer(writer)

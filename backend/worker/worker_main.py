@@ -438,11 +438,18 @@ class WorkerServer:
         except (ConnectionError, asyncio.IncompleteReadError, BrokenPipeError, ConnectionResetError):
             _logger.info("Client disconnected")
         finally:
-            writer.close()
             try:
-                await writer.wait_closed()
+                writer.close()
+                # Windows Proactor 在异常断连时可能永久等待 transport close。
+                # 服务端 handler 退出不应被连接清理无限拖住。
+                await asyncio.wait_for(writer.wait_closed(), timeout=1.0)
             except Exception:
-                pass
+                transport = getattr(writer, "transport", None)
+                if transport is not None:
+                    try:
+                        transport.abort()
+                    except Exception:
+                        pass
 
     async def shutdown(self) -> None:
         for model_path in list(self.state.models):

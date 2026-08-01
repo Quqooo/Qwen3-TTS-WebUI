@@ -201,12 +201,14 @@ class ModelCacheManager:
 
     async def _unload_instance(self, model_id: str, model_path: str, gpu: str) -> None:
         tracker = get_tracker()
-        await tracker.wait_idle(model_id, gpu)
         pool = self.pool
-        while pool.instance_inflight(model_path, gpu) > 0:
+        while tracker.is_busy(model_id, gpu) or pool.instance_inflight(model_path, gpu) > 0:
+            if pool.worker_for_gpu(gpu) is None:
+                break
             await asyncio.sleep(0.2)
         try:
-            await self._get_branch().unload_model(model_path, gpu_id=gpu)
+            if pool.worker_for_gpu(gpu) is not None:
+                await self._get_branch().unload_model(model_path, gpu_id=gpu)
         except Exception:
             _logger.warning("Failed to unload %s on GPU %s", model_id, gpu)
         async with self._lock:
@@ -280,9 +282,11 @@ class ModelCacheManager:
         return None
 
     async def _wait_instance_idle(self, model_id: str, model_path: str, gpu: str) -> None:
-        await get_tracker().wait_idle(model_id, gpu)
+        tracker = get_tracker()
         pool = self.pool
-        while pool.instance_inflight(model_path, gpu) > 0:
+        while tracker.is_busy(model_id, gpu) or pool.instance_inflight(model_path, gpu) > 0:
+            if pool.worker_for_gpu(gpu) is None:
+                return
             await asyncio.sleep(0.2)
 
     async def _sync_from_pool(self) -> None:

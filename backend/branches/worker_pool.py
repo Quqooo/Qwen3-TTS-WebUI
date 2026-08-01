@@ -97,16 +97,28 @@ class WorkerPool:
         return None
 
     async def stop_gpu(self, gpu_id: str, *, force: bool = False) -> None:
+        if force:
+            # 不能先等待池锁：正常 stop 会持有该锁等待 Worker 请求到达
+            # 安全边界，正是强停需要打断的状态。先直接终止当前进程，
+            # 再在锁内移除仍指向同一对象的池记录。
+            w = self._workers.get(gpu_id)
+            if w is None:
+                return
+            await w.force_stop()
+            async with self._lock:
+                if self._workers.get(gpu_id) is w:
+                    self._workers.pop(gpu_id, None)
+                    self._drop_gpu_assignments(gpu_id)
+            return
+
         async with self._lock:
             w = self._workers.get(gpu_id)
             if w is None:
                 return
-            if force:
-                await w.force_stop()
-            else:
-                await w.stop()
-            self._workers.pop(gpu_id, None)
-            self._drop_gpu_assignments(gpu_id)
+            await w.stop()
+            if self._workers.get(gpu_id) is w:
+                self._workers.pop(gpu_id, None)
+                self._drop_gpu_assignments(gpu_id)
 
     async def stop_all(self, *, force: bool = False) -> None:
         for gpu_id in list(self._workers.keys()):

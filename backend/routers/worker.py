@@ -88,6 +88,7 @@ async def _stop(target: Optional[str], *, force: bool):
         cm = get_cache_manager()
         if force:
             await cm.worker_force_stop(gpu_id, is_all)
+            asyncio.create_task(broadcast_worker_status())
             return {"status": "force-stopped"}
         await cm.worker_stop(gpu_id, is_all)
         asyncio.create_task(broadcast_worker_status())
