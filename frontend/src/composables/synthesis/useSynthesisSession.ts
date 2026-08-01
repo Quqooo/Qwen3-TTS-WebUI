@@ -37,6 +37,18 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
   let genTimer: ReturnType<typeof setInterval> | 0 = 0
   const resultAudioUrl = ref<string | null>(null)
   const resultDuration = ref<number | undefined>(undefined)
+
+  function clearResultAudioUrl() {
+    const previous = resultAudioUrl.value
+    resultAudioUrl.value = null
+    if (previous?.startsWith("blob:")) URL.revokeObjectURL(previous)
+  }
+
+  function replaceResultAudioUrl(blob: Blob) {
+    const previous = resultAudioUrl.value
+    resultAudioUrl.value = URL.createObjectURL(blob)
+    if (previous?.startsWith("blob:")) URL.revokeObjectURL(previous)
+  }
   const genTime = ref<number | undefined>(undefined)
   const rtf = ref<number | undefined>(undefined)
   const statusMessage = ref("")
@@ -67,7 +79,7 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
     genTime.value = undefined
     rtf.value = undefined
     audioPlayerRef.value?.stopStream()
-    resultAudioUrl.value = null
+    clearResultAudioUrl()
     resultDuration.value = undefined
     statusMessage.value = i18n.generating
     audioPlayerRef.value?.resetVisual()
@@ -130,16 +142,14 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
           const merged = new Uint8Array(total)
           let off = 0
           for (const c of pcmBuffer.value) { merged.set(c, off); off += c.length }
-          if (resultAudioUrl.value) URL.revokeObjectURL(resultAudioUrl.value)
-          resultAudioUrl.value = URL.createObjectURL(pcm16ToWav(merged, sr))
+          replaceResultAudioUrl(pcm16ToWav(merged, sr))
           resultDuration.value = merged.length / 2 / sr
         }
       } else {
         const duration = await getBlobDuration(blob)
         controller.signal.throwIfAborted()
         if (epoch !== generationEpoch) return
-        if (resultAudioUrl.value) URL.revokeObjectURL(resultAudioUrl.value)
-        resultAudioUrl.value = URL.createObjectURL(blob)
+        replaceResultAudioUrl(blob)
         resultDuration.value = duration
       }
       genTime.value = (performance.now() - genStartTime.value) / 1000
@@ -169,7 +179,13 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
     audioPlayerRef.value?.stopStream()
   }
 
-  onBeforeUnmount(() => { generationEpoch++; clearInterval(genTimer); generationController?.abort(); audioPlayerRef.value?.stopStream() })
+  onBeforeUnmount(() => {
+    generationEpoch++
+    clearInterval(genTimer)
+    generationController?.abort()
+    audioPlayerRef.value?.stopStream()
+    clearResultAudioUrl()
+  })
 
   return {
     bindAudioPlayer,

@@ -31,6 +31,23 @@ export function useBatchCache(opts: {
     finalAudioUrl, zipUrl, subtitleSrt, refAudioCached,
   } = opts
 
+  function revokeBlobUrl(url?: string | null) {
+    if (url?.startsWith("blob:")) URL.revokeObjectURL(url)
+  }
+
+  function replaceBlobUrl(target: Ref<string>, blob: Blob) {
+    const previous = target.value
+    target.value = URL.createObjectURL(blob)
+    revokeBlobUrl(previous)
+  }
+
+  function revokeRowUrls(currentRows: BatchRow[]) {
+    for (const row of currentRows) {
+      revokeBlobUrl(row.audioUrl)
+      revokeBlobUrl(row.refAudioUrl)
+    }
+  }
+
   async function saveCache() {
     if (!persistent.value) return
     for (const row of rows.value) {
@@ -96,6 +113,7 @@ export function useBatchCache(opts: {
       if (data.version === undefined || data.version < 1) return
       if (data.persistent !== true) return
       persistent.value = true
+      const previousRows = rows.value
       rows.value = data.rows.map((r: any) => {
         const row: any = {
           ...r,
@@ -111,6 +129,7 @@ export function useBatchCache(opts: {
         }
         return row
       })
+      revokeRowUrls(previousRows)
       for (const row of rows.value) {
         if (row.audioState === "done") {
           const blob = await audioCacheDB.get(row.id)
@@ -133,8 +152,8 @@ export function useBatchCache(opts: {
           audioCacheDB.getComposeZip(),
           audioCacheDB.getComposeSrt(),
         ])
-        if (audioBlob) finalAudioUrl.value = URL.createObjectURL(audioBlob)
-        if (zipBlob) zipUrl.value = URL.createObjectURL(zipBlob)
+        if (audioBlob) replaceBlobUrl(finalAudioUrl, audioBlob)
+        if (zipBlob) replaceBlobUrl(zipUrl, zipBlob)
         if (srt) subtitleSrt.value = srt
       }
       selectedIndexes.value = new Set(data.selectedIndexes || [])

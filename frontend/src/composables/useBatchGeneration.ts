@@ -56,6 +56,22 @@ export function useBatchGeneration(opts: GenEngineOpts) {
     return rows.value.find(r => r.id === id)
   }
 
+  function revokeBlobUrl(url?: string | null) {
+    if (url?.startsWith("blob:")) URL.revokeObjectURL(url)
+  }
+
+  function replaceBlobUrl(target: Ref<string>, blob: Blob) {
+    const previous = target.value
+    target.value = URL.createObjectURL(blob)
+    revokeBlobUrl(previous)
+  }
+
+  function clearBlobUrl(target: Ref<string>) {
+    const previous = target.value
+    target.value = ""
+    revokeBlobUrl(previous)
+  }
+
   // ── Timer ────────────────────────────────────────────────────────────
 
   function startGenTimer() {
@@ -113,7 +129,9 @@ export function useBatchGeneration(opts: GenEngineOpts) {
       const blob = await synthesisApi.synthesize(req, controller.signal)
       controller.signal.throwIfAborted()
       if (epoch !== generationEpoch || runningControllers.get(rowId) !== controller) return
+      const previousAudioUrl = row.audioUrl
       row.audioUrl = URL.createObjectURL(blob)
+      revokeBlobUrl(previousAudioUrl)
       audioCacheDB.put(row.id, blob)
       row.audioState = "done"
       try {
@@ -224,7 +242,7 @@ export function useBatchGeneration(opts: GenEngineOpts) {
       )
       const audioBytes = Uint8Array.from(atob(result.audio_base64), c => c.charCodeAt(0))
       const audioBlob = new Blob([audioBytes], { type: `audio/${result.format}` })
-      finalAudioUrl.value = URL.createObjectURL(audioBlob)
+      replaceBlobUrl(finalAudioUrl, audioBlob)
       subtitleSrt.value = result.subtitle_srt
 
       const ext = result.format === "wav" ? "wav" : result.format
@@ -240,7 +258,7 @@ export function useBatchGeneration(opts: GenEngineOpts) {
         zip.file(`#${String(idx + 1).padStart(3, "0")}_${prefix}_${modelTag}.${ext}`, blob)
       }
       const zipBlob = await zip.generateAsync({ type: "blob" })
-      zipUrl.value = URL.createObjectURL(zipBlob)
+      replaceBlobUrl(zipUrl, zipBlob)
 
       if (persistent.value) {
         audioCacheDB.putComposeAudio(audioBlob)
@@ -326,8 +344,8 @@ export function useBatchGeneration(opts: GenEngineOpts) {
       completedCount.value = 0
       totalAudioDuration.value = 0
       batchCursor = 0
-      finalAudioUrl.value = ""
-      zipUrl.value = ""
+      clearBlobUrl(finalAudioUrl)
+      clearBlobUrl(zipUrl)
       subtitleSrt.value = ""
       composeError.value = ""
       generationTime.value = "--:--"

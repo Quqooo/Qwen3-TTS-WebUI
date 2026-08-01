@@ -163,6 +163,21 @@ const subtitleSrt = ref("")
 const composeError = ref("")
 const refAudioCached = new Set<string>()
 
+function revokeBlobUrl(url?: string | null) {
+  if (url?.startsWith("blob:")) URL.revokeObjectURL(url)
+}
+
+function revokeAllBatchBlobUrls() {
+  const urls = new Set<string>()
+  for (const row of rows.value) {
+    if (row.audioUrl?.startsWith("blob:")) urls.add(row.audioUrl)
+    if (row.refAudioUrl?.startsWith("blob:")) urls.add(row.refAudioUrl)
+  }
+  if (finalAudioUrl.value.startsWith("blob:")) urls.add(finalAudioUrl.value)
+  if (zipUrl.value.startsWith("blob:")) urls.add(zipUrl.value)
+  for (const url of urls) URL.revokeObjectURL(url)
+}
+
 const { saveCache, restoreCache, clearCache } = useBatchCache({
   rows, selectedIndexes, editingIndex, persistent,
   format, sampleRate, gain, priorityMode, strictMode,
@@ -195,6 +210,7 @@ function removeSelected() {
 }
 
 async function clearAllTasks() {
+  revokeAllBatchBlobUrls()
   rows.value = []
   selectedIndexes.value = new Set()
   editingIndex.value = -1
@@ -398,7 +414,10 @@ function addRow(event?: MouseEvent) {
 
 function removeRow(idx: number) {
   if (rows.value[idx]?.finalized) return
-  const rowId = rows.value[idx]?.id
+  const removedRow = rows.value[idx]
+  revokeBlobUrl(removedRow?.audioUrl)
+  revokeBlobUrl(removedRow?.refAudioUrl)
+  const rowId = removedRow?.id
   if (rowId) {
     audioCacheDB.remove(rowId); audioCacheDB.removeRefAudio(rowId); refAudioCached.delete(rowId); delete rowProgress[rowId]
     destroyRowAudio(rowId)
@@ -422,7 +441,9 @@ async function generateRow(idx: number) {
     const blob = await synthesisApi.synthesize(req, controller.signal)
     controller.signal.throwIfAborted()
     if (rowGenerationControllers.get(row.id) !== controller) return
+    const previousAudioUrl = row.audioUrl
     row.audioUrl = URL.createObjectURL(blob)
+    if (previousAudioUrl?.startsWith("blob:")) URL.revokeObjectURL(previousAudioUrl)
     audioCacheDB.put(row.id, blob)
     row.audioState = "done"
   } catch (e: any) {
@@ -513,6 +534,7 @@ onBeforeUnmount(() => {
   for (const controller of rowGenerationControllers.values()) controller.abort()
   rowGenerationControllers.clear()
   destroyAllAudio()
+  revokeAllBatchBlobUrls()
 })
 
 function onDocumentClick(ev: MouseEvent) {

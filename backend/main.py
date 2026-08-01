@@ -25,7 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 
-from .cache import idle_cleanup_loop
+from .cache import get_cache_manager, idle_cleanup_loop
 from .config import load_settings
 from .errors import APIError, api_error_handler, validation_error_handler
 from .routers import (
@@ -174,6 +174,22 @@ async def lifespan(app: FastAPI):
             await idle_cleanup_task
         except asyncio.CancelledError:
             pass
+
+        cache_manager = get_cache_manager()
+        try:
+            await asyncio.wait_for(
+                cache_manager.worker_stop(stop_all=True),
+                timeout=10.0,
+            )
+        except asyncio.TimeoutError:
+            _logger.warning("Timed out while stopping Worker processes; forcing shutdown")
+        except Exception:
+            _logger.exception("Failed to stop all Worker processes during shutdown")
+        finally:
+            try:
+                await cache_manager.worker_force_stop(stop_all=True)
+            except Exception:
+                _logger.exception("Failed to force-stop remaining Worker processes during shutdown")
 
 
 # 创建 FastAPI 应用实例

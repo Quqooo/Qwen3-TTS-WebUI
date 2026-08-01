@@ -189,8 +189,10 @@ watch(() => [props.modelValue.refAudioUrl, props.modelValue.refText], () => {
 
 function handleAudioFile(file: File) {
   if (!file.type.startsWith("audio/")) return
+  const previousUrl = props.modelValue.refAudioUrl
   const url = URL.createObjectURL(file)
   patch({ refAudioUrl: url, refAudioName: file.name })
+  if (previousUrl?.startsWith("blob:")) URL.revokeObjectURL(previousUrl)
 }
 
 function removeAudio() {
