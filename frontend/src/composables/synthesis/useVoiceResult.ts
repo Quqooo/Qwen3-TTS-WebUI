@@ -70,7 +70,7 @@ export function useVoiceResult(
       })
       await voicesApi.upload({
         audio: base64,
-        customName: name.trim() || undefined,
+        name: name.trim() || undefined,
         model: modelId,
         text: text || undefined,
       })

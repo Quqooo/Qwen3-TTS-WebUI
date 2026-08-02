@@ -25,12 +25,12 @@ export interface VoiceEditRequest {
 
 export const voicesApi = {
   list: () => api.get<{ voices: string[] }>("/voices"),
-  get: (name: string) => api.get<VoiceMeta>(`/voices/${encodeURIComponent(name)}`),
-  upload: (data: { audio: string; customName?: string; model: string; text?: string; x_vector_only?: boolean }) =>
+  get: (name: string) => api.post<VoiceMeta>("/voices", { name }),
+  upload: (data: { audio: string; name?: string; model: string; text?: string; x_vector_only?: boolean }) =>
     api.post<{ path: string }>("/voices/upload", data),
   edit: (data: VoiceEditRequest) =>
     api.post<{ status: string; path: string }>("/voices/edit", data),
   delete: (name: string) => api.post<{ status: string }>("/voices/delete", { name }),
   audio: (name: string, load: boolean) =>
-    api.post<VoicePreview>(`/voices/audio/${encodeURIComponent(name)}`, { load }),
+    api.post<VoicePreview>("/voices/audio", { name, load }),
 }

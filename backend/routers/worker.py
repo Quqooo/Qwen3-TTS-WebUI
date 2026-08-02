@@ -4,14 +4,14 @@ Worker 进程生命周期管理 API 路由
 提供启动、停止和查询 Worker 子进程的 REST 接口。
 Worker 统一通过 cache.branch 访问，不直接与 WorkerProcess 交互。
 
-多 GPU：start/stop/force-stop 支持在路径末尾指定 GPU 槽位
-（如 /api/worker/stop/1），stop 与 force-stop 额外支持 /all。
-不指定时按配置的 GPU 优先级顺序启动/停止。
+多 GPU：start/stop/force-stop 统一为 POST 请求，请求体 target 字段
+指定 GPU 槽位（"all" 表示全部）。不传时按配置的 GPU 优先级顺序操作。
 """
 import asyncio
 from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from ..branches.base import NotSupportedError
 from ..cache import get_cache_manager
@@ -20,6 +20,11 @@ from ..errors import raise_error
 from .ws import broadcast_worker_status
 
 router = APIRouter(prefix="/api", tags=["worker"], dependencies=[Depends(require_qwen)])
+
+
+class WorkerTargetRequest(BaseModel):
+    """Worker 操作请求体，target 为目标 GPU 槽位（all 表示全部）"""
+    target: Optional[str] = None
 
 
 def _resolve_target(target: Optional[str], allow_all: bool) -> Tuple[Optional[str], bool]:
@@ -70,15 +75,9 @@ async def _start(target: Optional[str]):
 
 
 @router.post("/worker/start")
-async def worker_start():
-    """按优先级启动第一个未运行的 Worker"""
-    return await _start(None)
-
-
-@router.post("/worker/start/{target}")
-async def worker_start_gpu(target: str):
-    """启动指定 GPU 槽位的 Worker（/all 启动全部）"""
-    return await _start(target)
+async def worker_start(body: WorkerTargetRequest):
+    """启动 Worker；target 不传按优先级启动第一个未运行的，all 启动全部"""
+    return await _start(body.target)
 
 
 async def _stop(target: Optional[str], *, force: bool):
@@ -100,24 +99,12 @@ async def _stop(target: Optional[str], *, force: bool):
 
 
 @router.post("/worker/stop")
-async def worker_stop():
-    """按优先级停止第一个运行中的 Worker（等待推理到达安全边界）"""
-    return await _stop(None, force=False)
-
-
-@router.post("/worker/stop/{target}")
-async def worker_stop_gpu(target: str):
-    """停止指定 GPU 槽位的 Worker，/all 停止全部"""
-    return await _stop(target, force=False)
+async def worker_stop(body: WorkerTargetRequest):
+    """停止 Worker（等待推理到达安全边界）；target 不传按优先级停止第一个运行中的，all 全部"""
+    return await _stop(body.target, force=False)
 
 
 @router.post("/worker/force-stop")
-async def worker_force_stop():
-    """按优先级强制停止第一个运行中的 Worker"""
-    return await _stop(None, force=True)
-
-
-@router.post("/worker/force-stop/{target}")
-async def worker_force_stop_gpu(target: str):
-    """强制停止指定 GPU 槽位的 Worker，/all 强制停止全部"""
-    return await _stop(target, force=True)
+async def worker_force_stop(body: WorkerTargetRequest):
+    """强制停止 Worker；target 不传按优先级强制停止第一个运行中的，all 全部"""
+    return await _stop(body.target, force=True)

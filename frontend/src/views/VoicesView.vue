@@ -444,7 +444,7 @@ async function saveNewVoice() {
 
     await voicesApi.upload({
       audio: base64,
-      customName: newName.value.trim() || undefined,
+      name: newName.value.trim() || undefined,
       model: newModel.value,
       text: newXvec.value ? undefined : (newText.value || undefined),
       x_vector_only: newXvec.value || undefined,

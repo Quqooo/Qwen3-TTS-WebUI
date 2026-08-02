@@ -7,5 +7,5 @@ export const modelsApi = {
   unload: (modelId: string) => api.post<{ message: string }>("/models/unload", { model: modelId }),
   cacheStatus: () => api.get<ModelCacheStatus>("/models/cache"),
   updateCache: (maxConcurrent: number) => api.put<ModelCacheStatus>("/models/cache", { max_concurrent: maxConcurrent }),
-  getMeta: (modelId: string) => api.get<ModelMeta>(`/models/meta/${encodeURIComponent(modelId)}`),
+  getMeta: (modelId: string) => api.post<ModelMeta>("/models/meta", { model: modelId }),
 }

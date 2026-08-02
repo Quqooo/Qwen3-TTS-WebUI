@@ -94,7 +94,10 @@ async def cache_status():
 
 class ModelIdRequest(BaseModel):
     model: str
-    model_kind: str = "base"
+
+
+class ModelMetaRequest(BaseModel):
+    model: str
 
 
 def _require_model_id(model_id: str) -> str:
@@ -109,11 +112,14 @@ def _require_model_id(model_id: str) -> str:
 
 @router.post("/models/load")
 async def load_model(body: ModelIdRequest):
-    """加载指定模型到缓存"""
+    """加载指定模型到缓存（模型类型自动识别）"""
     model_id = _require_model_id(body.model)
+    kind = _detect_model_kind(model_id)
+    if kind == "unknown":
+        raise_error(status_code=400, detail="Cannot determine model type", debug=f"model: {body.model}")
     try:
         cache = get_cache_manager()
-        await cache.load_model(model_id, body.model_kind)
+        await cache.load_model(model_id, kind)
         asyncio.create_task(broadcast_cache_status())
         return {"status": "loaded", "model": body.model}
     except APIError:
@@ -158,10 +164,10 @@ async def unload_idle_models():
         return {"unloaded": []}
 
 
-@router.get("/models/meta/{model_id}")
-async def model_meta(model_id: str):
+@router.post("/models/meta")
+async def model_meta(body: ModelMetaRequest):
     """获取模型支持的语言和说话人参数。
 
     模型加载后自动缓存；未缓存时返回默认值。
     """
-    return get_model_meta(_require_model_id(model_id))
+    return get_model_meta(_require_model_id(body.model))

@@ -63,9 +63,14 @@ async def list_voices():
     return {"voices": [os.path.splitext(vf)[0] for vf in files]}
 
 
-@router.get("/voices/{name:path}")
-async def get_voice(name: str):
+class VoiceNameRequest(BaseModel):
+    name: str
+
+
+@router.post("/voices")
+async def get_voice(body: VoiceNameRequest):
     """获取单个音色文件的详细元数据"""
+    name = body.name
     full_path = voice_manager.resolve_voice_file(name)
     if not full_path:
         raise_error(status_code=404, detail=f"Voice not found: {name}")
@@ -94,6 +99,7 @@ async def get_voice(name: str):
 
 
 class VoiceAudioPreviewRequest(BaseModel):
+    name: str
     load: bool = False
 
 
@@ -120,13 +126,14 @@ def _find_first_base_model_id() -> str:
     return ""
 
 
-@router.post("/voices/audio/{name:path}")
-async def preview_voice_audio(name: str, body: VoiceAudioPreviewRequest):
+@router.post("/voices/audio")
+async def preview_voice_audio(body: VoiceAudioPreviewRequest):
     """解码音色文件的参考音频预览
 
     优先使用空闲的 Base 模型实例（空闲 GPU 上的实例优先）；
     load=true 时仅在无已加载 Base 模型的情况下才新加载。
     """
+    name = body.name
     full_path = voice_manager.resolve_voice_file(name)
     if not full_path:
         raise_error(status_code=404, detail=f"Voice not found: {name}")
@@ -163,7 +170,7 @@ async def preview_voice_audio(name: str, body: VoiceAudioPreviewRequest):
 class VoiceUploadRequest(BaseModel):
     """音色上传请求体"""
     audio: str
-    customName: Optional[str] = None
+    name: Optional[str] = None
     model: str
     text: Optional[str] = None
     x_vector_only: Optional[bool] = None
@@ -174,7 +181,7 @@ async def upload_voice(body: VoiceUploadRequest):
     """上传并创建音色文件"""
     from ..audio import download_audio
 
-    raw_name = (body.customName or "").strip() or "default"
+    raw_name = (body.name or "").strip() or "default"
 
     has_text = bool(body.text and body.text.strip())
     has_xvec = body.x_vector_only is True

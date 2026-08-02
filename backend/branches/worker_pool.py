@@ -11,6 +11,7 @@
 """
 import asyncio
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -268,7 +269,7 @@ class WorkerPool:
                 "alive": alive,
                 "error": error,
                 "pid": w.pid if w is not None else None,
-                "models": sorted(self.gpu_models(gpu_id)),
+                "models": sorted(os.path.basename(p) for p in self.gpu_models(gpu_id)),
                 "inflight": self.gpu_inflight(gpu_id),
                 "last_activity": w.last_activity if w is not None else None,
             })
