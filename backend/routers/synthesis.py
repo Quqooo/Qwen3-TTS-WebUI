@@ -35,64 +35,60 @@ _MAX_GENERATION_LENGTH = 32767
 
 
 class GenerationParamsModel(BaseModel):
-    """生成参数
+    """可选生成参数；未提供的字段不会发送到 Worker。"""
 
-    对应前端 GenerationParams 类型，所有字段均为可选。
-    """
     do_sample: Optional[bool] = None
-    top_k: Optional[int] = None
-    top_p: Optional[float] = None
-    temperature: Optional[float] = None
-    repetition_penalty: Optional[float] = None
-    subtalker_top_k: Optional[int] = None
-    subtalker_top_p: Optional[float] = None
-    subtalker_temperature: Optional[float] = None
+    top_k: Optional[StrictInt] = Field(None, ge=0)
+    top_p: Optional[float] = Field(None, gt=0, le=1.0)
+    temperature: Optional[float] = Field(None, gt=0)
+    repetition_penalty: Optional[float] = Field(None, gt=0)
+    subtalker_dosample: Optional[bool] = None
+    subtalker_top_k: Optional[StrictInt] = Field(None, ge=0)
+    subtalker_top_p: Optional[float] = Field(None, gt=0, le=1.0)
+    subtalker_temperature: Optional[float] = Field(None, gt=0)
+    min_new_tokens: Optional[StrictInt] = Field(None, ge=1, le=_MAX_GENERATION_LENGTH)
     max_new_tokens: Optional[StrictInt] = Field(None, ge=1, le=_MAX_GENERATION_LENGTH)
+    non_streaming_mode: Optional[bool] = None
+
+
+class OutputParamsModel(BaseModel):
+    format: str = "wav"
+    sample_rate: StrictInt = Field(24000, ge=1)
+    gain: float = 0.0
+
+
+class DffdeeqParamsModel(BaseModel):
+    emit_every_frames: Optional[StrictInt] = Field(None, ge=1)
+    decode_window_frames: Optional[StrictInt] = Field(None, ge=1)
+    overlap_samples: Optional[StrictInt] = Field(None, ge=0)
+    max_frames: Optional[StrictInt] = Field(None, ge=1, le=_MAX_GENERATION_LENGTH)
+
+
+class AndimarafiotiParamsModel(BaseModel):
+    chunk_size: Optional[StrictInt] = Field(None, ge=1)
+    parity_mode: Optional[bool] = None
 
 
 class SynthesisRequest(BaseModel):
-    """合成请求体
+    """合成请求体；分支专用参数使用嵌套对象隔离。"""
 
-    覆盖三种模型类型的所有参数。实际生效的参数取决于 kind：
-    - base: 使用 ref_audio/ref_text/voice_file/x_vector_only，可选 instruct
-    - custom_voice: 使用 speaker/instruct
-    - voice_design: 使用 voice_description
-    """
-    model: str                                          # model_dir 下的模型 ID
-    text: str                                           # 合成文本
-    language: str = "Auto"                              # 语言
-    kind: str = "base"                                  # 模型类型: base/custom_voice/voice_design
-
-    # 模型类型相关参数
-    speaker: Optional[str] = None                       # kind=custom_voice 时必填
-    instruct: Optional[str] = None                      # kind=base/custom_voice 可选
-    voice_description: Optional[str] = None             # kind=voice_design 时必填
-
-    # Base 模型参数（仅 kind=base 可填）
-    ref_audio: Optional[str] = None                     # 参考音频 URL 或 data URI
-    ref_text: Optional[str] = None                      # 参考文本，与 x_vector_only 互斥
-    voice_file: Optional[str] = None                    # 音色文件名称，与 ref_audio/ref_text/x_vector_only 互斥
-    x_vector_only: bool = False                         # 是否仅使用 x-vector，与 ref_text/voice_file 互斥
-
-    # 流式参数（仅 streaming=true 可填）
+    model: str
+    text: str
+    language: str = "Auto"
+    kind: str = "base"
+    speaker: Optional[str] = None
+    instruct: Optional[str] = None
+    voice_description: Optional[str] = None
+    ref_audio: Optional[str] = None
+    ref_text: Optional[str] = None
+    voice_file: Optional[str] = None
+    x_vector_only: bool = False
     streaming: bool = False
-    emit_every_frames: int = 8
-    decode_window_frames: int = 80
-    overlap_samples: int = 0
-    chunk_size: Optional[int] = Field(12, ge=1)         # 每块 codec 步数，仅 Faster 流式生效（12 ≈ 1 秒），非流式丢弃
-    max_frames: StrictInt = Field(10000, ge=1, le=_MAX_GENERATION_LENGTH)
-
-    # 输出参数
-    output_format: str = "wav"                          # wav/flac/mp3/ogg/pcm/opus/aac
-    output_sample_rate: int = 24000                     # 输出采样率
-    gain: float = 0.0                                   # 增益（分贝）
-
-    # 文本切分参数（仅 streaming=false 且 split_enabled=true 时启用）
-    split_enabled: bool = False
-    split_characters: Optional[List[str]] = None
-
-    # 生成参数
+    split_string: Optional[List[str]] = None
+    output: OutputParamsModel = Field(default_factory=OutputParamsModel)
     generation_params: Optional[GenerationParamsModel] = None
+    dffdeeq: Optional[DffdeeqParamsModel] = None
+    andimarafioti: Optional[AndimarafiotiParamsModel] = None
 
     @model_validator(mode="after")
     def validate_request(self) -> "SynthesisRequest":
@@ -101,34 +97,17 @@ class SynthesisRequest(BaseModel):
             raise ValueError("speaker is required when kind=custom_voice")
         if kind == "voice_design" and not self.voice_description:
             raise ValueError("voice_description is required when kind=voice_design")
-
-        if kind != "base":
-            if self.ref_audio or self.ref_text or self.voice_file or self.x_vector_only:
-                raise ValueError(f"ref_audio/ref_text/voice_file/x_vector_only are only allowed when kind=base")
-
+        if kind != "base" and (self.ref_audio or self.ref_text or self.voice_file or self.x_vector_only):
+            raise ValueError("ref_audio/ref_text/voice_file/x_vector_only are only allowed when kind=base")
         if self.ref_text and self.x_vector_only:
             raise ValueError("ref_text and x_vector_only are mutually exclusive")
         if self.voice_file and (self.ref_audio or self.ref_text or self.x_vector_only):
             raise ValueError("voice_file is mutually exclusive with ref_audio/ref_text/x_vector_only")
-
-        if not self.streaming:
-            if "max_frames" in self.model_fields_set:
-                raise ValueError("max_frames is only allowed when streaming=true")
-            if self.emit_every_frames != 8:
-                self.emit_every_frames = 8
-            if self.decode_window_frames != 80:
-                self.decode_window_frames = 80
-            if self.overlap_samples != 0:
-                self.overlap_samples = 0
-            # 与 Faster 源码一致：非流式 API 不接受 chunk_size，直接丢弃
-            self.chunk_size = None
-        else:
-            if self.output_format != "pcm":
+        if self.streaming:
+            if self.output.format.lower() != "pcm":
                 raise ValueError("streaming only supports pcm format")
-
-        if self.split_enabled and self.streaming:
-            raise ValueError("split_enabled cannot be true when streaming=true")
-
+            if self.split_string:
+                raise ValueError("split_string cannot be used when streaming=true")
         return self
 
 
@@ -142,7 +121,7 @@ async def _do_synthesize(body: SynthesisRequest):
     cache = get_cache_manager()
 
     streaming = body.streaming
-    fmt = body.output_format.lower()
+    fmt = body.output.format.lower()
 
     text = body.text.strip()
     if not text:
@@ -265,6 +244,9 @@ def _stream_from_generator(
     """将异步生成器包装为逐块 PCM 流式 StreamingResponse"""
     import numpy as np
 
+    gain = body.output.gain
+    output_sample_rate = body.output.sample_rate
+
     async def stream_generator():
         model_sr = None
         completed = False
@@ -273,17 +255,17 @@ def _stream_from_generator(
             if first_chunk is not None:
                 chunk_wav, chunk_sr = first_chunk
                 model_sr = chunk_sr
-                chunk = apply_gain(np.asarray(chunk_wav, dtype=np.float32), body.gain)
-                if body.output_sample_rate != model_sr:
-                    chunk = resample(chunk, model_sr, body.output_sample_rate)
+                chunk = apply_gain(np.asarray(chunk_wav, dtype=np.float32), gain)
+                if output_sample_rate != model_sr:
+                    chunk = resample(chunk, model_sr, output_sample_rate)
                 chunk = np.clip(chunk, -1.0, 1.0)
                 yield (chunk * 32767).astype(np.int16).tobytes()
             async for chunk_wav, chunk_sr in async_gen:
                 if model_sr is None:
                     model_sr = chunk_sr
-                chunk = apply_gain(np.asarray(chunk_wav, dtype=np.float32), body.gain)
-                if body.output_sample_rate != model_sr:
-                    chunk = resample(chunk, model_sr, body.output_sample_rate)
+                chunk = apply_gain(np.asarray(chunk_wav, dtype=np.float32), gain)
+                if output_sample_rate != model_sr:
+                    chunk = resample(chunk, model_sr, output_sample_rate)
                 chunk = np.clip(chunk, -1.0, 1.0)
                 int16 = (chunk * 32767).astype(np.int16)
                 yield int16.tobytes()
@@ -326,15 +308,27 @@ def _stream_from_generator(
 
     return StreamingResponse(
         stream_generator(),
-        media_type="audio/L16;rate=%d" % body.output_sample_rate,
+        media_type="audio/L16;rate=%d" % output_sample_rate,
     )
+
+
+def _stream_branch_options(body: SynthesisRequest) -> Dict[str, Any]:
+    """只提取 API 明确提供的分支参数，不注入默认值。"""
+    return {
+        "dffdeeq": body.dffdeeq.model_dump(exclude_none=True) if body.dffdeeq else {},
+        "andimarafioti": (
+            body.andimarafioti.model_dump(exclude_none=True)
+            if body.andimarafioti
+            else {}
+        ),
+    }
 
 
 async def _handle_base_synthesis(
     branch, body, fmt, gen_kwargs, touch_model=None, finish_stream=None,
 ):
     """处理 Base 模型合成"""
-    target_sr = body.output_sample_rate
+    target_sr = body.output.sample_rate
 
     voice_file_path = None
     if body.voice_file:
@@ -354,11 +348,7 @@ async def _handle_base_synthesis(
             "model_path": gen_kwargs["model_path"],
             "text": body.text,
             "language": body.language,
-            "emit_every_frames": body.emit_every_frames,
-            "decode_window_frames": body.decode_window_frames,
-            "overlap_samples": body.overlap_samples,
-            "chunk_size": body.chunk_size,
-            "max_frames": body.max_frames,
+            **_stream_branch_options(body),
             "generation_params": gen_kwargs.get("generation_params"),
             "instruct": body.instruct,
             "lease": gen_kwargs.get("lease"),
@@ -397,7 +387,7 @@ async def _handle_base_synthesis(
         gen_fn_kwargs["ref_text"] = body.ref_text
         gen_fn_kwargs["x_vector_only"] = body.x_vector_only
 
-    parts = split_text(body.text, body.split_characters) if body.split_enabled else [body.text]
+    parts = split_text(body.text, body.split_string) if body.split_string else [body.text]
     all_wavs = []
     model_sr = 24000
 
@@ -412,14 +402,14 @@ async def _handle_base_synthesis(
     if touch_model:
         await touch_model()
 
-    return _finalize_audio(all_wavs, model_sr, target_sr, body.gain, fmt)
+    return _finalize_audio(all_wavs, model_sr, target_sr, body.output.gain, fmt)
 
 
 async def _handle_custom_voice_synthesis(
     branch, body, fmt, gen_kwargs, touch_model=None, finish_stream=None,
 ):
     """处理 CustomVoice 模型合成"""
-    target_sr = body.output_sample_rate
+    target_sr = body.output.sample_rate
     speaker = body.speaker or "serena"
 
     if body.streaming:
@@ -430,18 +420,14 @@ async def _handle_custom_voice_synthesis(
                 speaker=speaker,
                 language=body.language,
                 instruct=body.instruct,
-                emit_every_frames=body.emit_every_frames,
-                decode_window_frames=body.decode_window_frames,
-                overlap_samples=body.overlap_samples,
-                chunk_size=body.chunk_size,
-                max_frames=body.max_frames,
+                **_stream_branch_options(body),
                 generation_params=gen_kwargs.get("generation_params"),
                 lease=gen_kwargs.get("lease"),
             ),
             body, fmt, touch_model=touch_model, finish_stream=finish_stream,
         )
 
-    parts = split_text(body.text, body.split_characters) if body.split_enabled else [body.text]
+    parts = split_text(body.text, body.split_string) if body.split_string else [body.text]
     all_wavs = []
     model_sr = 24000
 
@@ -455,14 +441,14 @@ async def _handle_custom_voice_synthesis(
         model_sr = sr
         all_wavs.append(np.asarray(wavs[0], dtype=np.float32))
 
-    return _finalize_audio(all_wavs, model_sr, target_sr, body.gain, fmt)
+    return _finalize_audio(all_wavs, model_sr, target_sr, body.output.gain, fmt)
 
 
 async def _handle_voice_design_synthesis(
     branch, body, fmt, gen_kwargs, touch_model=None, finish_stream=None,
 ):
     """处理 VoiceDesign 模型合成"""
-    target_sr = body.output_sample_rate
+    target_sr = body.output.sample_rate
     instruct = body.voice_description or ""
 
     if not instruct:
@@ -475,18 +461,14 @@ async def _handle_voice_design_synthesis(
                 text=body.text,
                 instruct=instruct,
                 language=body.language,
-                emit_every_frames=body.emit_every_frames,
-                decode_window_frames=body.decode_window_frames,
-                overlap_samples=body.overlap_samples,
-                chunk_size=body.chunk_size,
-                max_frames=body.max_frames,
+                **_stream_branch_options(body),
                 generation_params=gen_kwargs.get("generation_params"),
                 lease=gen_kwargs.get("lease"),
             ),
             body, fmt, touch_model=touch_model, finish_stream=finish_stream,
         )
 
-    parts = split_text(body.text, body.split_characters) if body.split_enabled else [body.text]
+    parts = split_text(body.text, body.split_string) if body.split_string else [body.text]
     all_wavs = []
     model_sr = 24000
 
@@ -499,7 +481,7 @@ async def _handle_voice_design_synthesis(
         model_sr = sr
         all_wavs.append(np.asarray(wavs[0], dtype=np.float32))
 
-    return _finalize_audio(all_wavs, model_sr, target_sr, body.gain, fmt)
+    return _finalize_audio(all_wavs, model_sr, target_sr, body.output.gain, fmt)
 
 
 async def _resolve_ref_audio(ref_audio_url: str):

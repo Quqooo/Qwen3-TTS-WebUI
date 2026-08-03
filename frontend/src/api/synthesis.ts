@@ -65,7 +65,7 @@ export const synthesisApi = {
         offset += chunk.length
       }
       signal?.throwIfAborted()
-      return pcm16ToWav(pcm, req.output_sample_rate ?? 24000)
+      return pcm16ToWav(pcm, req.output.sample_rate ?? 24000)
     } finally {
       signal?.removeEventListener("abort", abortReader)
       reader.releaseLock()

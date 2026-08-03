@@ -9,7 +9,7 @@ from backend.worker.provider import ProviderCapabilities, ProviderValidationErro
 _LOAD_OPTIONS = {"device", "dtype", "local_files_only"}
 _GENERATION_OPTIONS = {
     "max_new_tokens", "min_new_tokens", "temperature", "top_k", "top_p",
-    "do_sample", "repetition_penalty",
+    "do_sample", "repetition_penalty", "non_streaming_mode",
 }
 
 
@@ -98,7 +98,7 @@ class FasterQwenProvider(WorkerProvider):
     def stream_voice_clone(self, model: Any, request: Dict[str, Any]):
         kwargs = self._clone_kwargs(model, request)
         kwargs.update(self._stream_options(request))
-        parity_mode = request.get("stream_params", {}).get("parity_mode")
+        parity_mode = (request.get("andimarafioti") or {}).get("parity_mode")
         if parity_mode is not None:
             kwargs["parity_mode"] = parity_mode
         yield from self._normalize_stream(model.generate_voice_clone_streaming(**kwargs))
@@ -117,8 +117,8 @@ class FasterQwenProvider(WorkerProvider):
 
     @staticmethod
     def _stream_options(request: Dict[str, Any]) -> Dict[str, Any]:
-        values = request.get("stream_params", {})
-        return {"chunk_size": values.get("chunk_size", 12)}
+        values = request.get("andimarafioti") or {}
+        return {"chunk_size": values["chunk_size"]} if "chunk_size" in values else {}
 
     @staticmethod
     def _normalize_stream(iterator: Any):

@@ -36,7 +36,12 @@ class FasterBranch(PooledWorkerBranch):
             "warmup_prefill_len": min(100, settings.max_seq_len - 1),
         }
 
-    def _stream_params(self, emit_every_frames: int, decode_window_frames: int,
-                       overlap_samples: int, max_frames: int,
-                       chunk_size: int = 12) -> Dict[str, Any]:
-        return {"chunk_size": chunk_size}
+    def _stream_params(
+        self,
+        dffdeeq: Any = None,
+        andimarafioti: Any = None,
+    ) -> Dict[str, Any]:
+        return {
+            "andimarafioti": dict(andimarafioti or {}),
+            "dffdeeq": dict(dffdeeq or {}),
+        }

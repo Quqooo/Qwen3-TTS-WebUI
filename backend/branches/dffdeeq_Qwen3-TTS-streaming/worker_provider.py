@@ -27,6 +27,15 @@ def _filtered(values: Dict[str, Any], allowed: set) -> Dict[str, Any]:
     return {key: value for key, value in (values or {}).items() if key in allowed and value is not None}
 
 
+def _generation_values(request: Dict[str, Any], allowed: set = _GENERATION_OPTIONS) -> Dict[str, Any]:
+    values = dict(request.get("generation_params") or {})
+    non_streaming_mode = values.pop("non_streaming_mode", None)
+    filtered = _filtered(values, allowed)
+    if non_streaming_mode is not None:
+        filtered["non_streaming_mode"] = non_streaming_mode
+    return filtered
+
+
 def _audio_result(result: Any):
     import numpy as np
 
@@ -98,7 +107,7 @@ class StreamingQwenProvider(WorkerProvider):
 
     def generate_voice_clone(self, model: Any, request: Dict[str, Any]):
         kwargs = {"text": request["text"], "language": request.get("language", "Auto"),
-                  **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}
+                  **_generation_values(request)}
         if request.get("voice_clone_prompt") is not None:
             kwargs["voice_clone_prompt"] = request["voice_clone_prompt"]
         elif request.get("ref_audio") is not None:
@@ -112,17 +121,17 @@ class StreamingQwenProvider(WorkerProvider):
         return _audio_result(model.generate_custom_voice(
             text=request["text"], speaker=request["speaker"], language=request.get("language", "Auto"),
             instruct=request.get("instruct"),
-            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)))
+            **_generation_values(request)))
 
     def generate_voice_design(self, model: Any, request: Dict[str, Any]):
         return _audio_result(model.generate_voice_design(
             text=request["text"], instruct=request["instruct"], language=request.get("language", "Auto"),
-            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)))
+            **_generation_values(request)))
 
     def stream_voice_clone(self, model: Any, request: Dict[str, Any]):
         kwargs = {"text": request["text"], "language": request.get("language", "Auto"),
                   **self._stream_options(request),
-                   **_filtered(request.get("generation_params", {}), _STREAM_GENERATION_OPTIONS)}
+                   **_generation_values(request, _STREAM_GENERATION_OPTIONS)}
         if request.get("voice_clone_prompt") is not None:
             items = request["voice_clone_prompt"]
             kwargs["voice_clone_prompt"] = items[0] if len(items) == 1 else items
@@ -154,12 +163,16 @@ class StreamingQwenProvider(WorkerProvider):
 
     @staticmethod
     def _stream_options(request: Dict[str, Any]) -> Dict[str, Any]:
-        values = request.get("stream_params", {})
+        values = request.get("dffdeeq") or {}
         return {
-            "emit_every_frames": values.get("emit_every_frames", 8),
-            "decode_window_frames": values.get("decode_window_frames", 80),
-            "overlap_samples": values.get("overlap_samples", 0),
-            "max_frames": values.get("max_frames", 10000),
+            key: values[key]
+            for key in (
+                "emit_every_frames",
+                "decode_window_frames",
+                "overlap_samples",
+                "max_frames",
+            )
+            if key in values and values[key] is not None
         }
 
     def create_voice_clone_prompt(self, model: Any, request: Dict[str, Any]) -> List[Dict[str, Any]]:

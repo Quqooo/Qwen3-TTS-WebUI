@@ -69,10 +69,35 @@ export interface GenerationParams {
   top_p?: number
   temperature?: number
   repetition_penalty?: number
+  subtalker_dosample?: boolean
   subtalker_top_k?: number
   subtalker_top_p?: number
   subtalker_temperature?: number
+  min_new_tokens?: number
   max_new_tokens?: number
+  non_streaming_mode?: boolean
+}
+
+export interface GenerationParamsConfig extends GenerationParams {
+  enabled: boolean
+}
+
+export interface SynthesisOutputParams {
+  format: string
+  sample_rate: number
+  gain: number
+}
+
+export interface DffdeeqParams {
+  emit_every_frames?: number
+  decode_window_frames?: number
+  overlap_samples?: number
+  max_frames?: number
+}
+
+export interface AndimarafiotiParams {
+  chunk_size?: number
+  parity_mode?: boolean
 }
 
 export interface SynthesisRequest {
@@ -88,16 +113,11 @@ export interface SynthesisRequest {
   voice_file?: string
   x_vector_only?: boolean
   streaming?: boolean
-  emit_every_frames?: number
-  decode_window_frames?: number
-  overlap_samples?: number
-  max_frames?: number
-  output_format?: string
-  output_sample_rate?: number
-  gain?: number
-  split_characters?: string[]
-  split_enabled?: boolean
+  split_string?: string[]
+  output: SynthesisOutputParams
   generation_params?: GenerationParams
+  dffdeeq?: DffdeeqParams
+  andimarafioti?: AndimarafiotiParams
 }
 
 export interface VoiceFile {

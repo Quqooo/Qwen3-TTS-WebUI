@@ -7,7 +7,7 @@ import SegmentPanel from "../synthesis/SegmentPanel.vue"
 import GenerationParams from "../synthesis/GenerationParams.vue"
 import AudioCard from "../audio/AudioCard.vue"
 import TimeInput from "../common/TimeInput.vue"
-import type { ModelKind, GenerationParams as GenParams } from "../../types"
+import type { ModelKind, GenerationParamsConfig as GenParams } from "../../types"
 import { useModelStore } from "../../stores/model"
 import { useVoiceStore } from "../../stores/voice"
 import { modelsApi } from "../../api/models"
@@ -433,6 +433,7 @@ function onUploadInput(ev: Event) {
 
     <GenerationParams
       :model-value="modelValue.generationParams"
+      :disabled="disabled"
       @update:model-value="patch({ generationParams: $event })"
     />
   </div>

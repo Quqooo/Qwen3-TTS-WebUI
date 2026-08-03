@@ -1,26 +1,31 @@
 import { useStorage } from "@vueuse/core"
-import type { ModelKind, GenerationParams } from "../types"
+import type { ModelKind, GenerationParamsConfig } from "../types"
 
-const DEFAULT_PARAMS: GenerationParams = {
+const DEFAULT_PARAMS: GenerationParamsConfig = {
+  enabled: false,
+  do_sample: true,
   temperature: 0.9,
   top_k: 50,
   top_p: 1.0,
   repetition_penalty: 1.05,
-  max_new_tokens: 8192,
+  subtalker_dosample: true,
   subtalker_top_k: 50,
   subtalker_top_p: 1.0,
   subtalker_temperature: 0.9,
+  min_new_tokens: undefined,
+  max_new_tokens: 2048,
+  non_streaming_mode: undefined,
 }
 
-const DEFAULT_PARAMS_BY_KIND: Record<ModelKind, GenerationParams> = {
+const DEFAULT_PARAMS_BY_KIND: Record<ModelKind, GenerationParamsConfig> = {
   base: { ...DEFAULT_PARAMS },
   custom_voice: { ...DEFAULT_PARAMS },
   voice_design: { ...DEFAULT_PARAMS },
 }
 
-function sanitizeParams(v: unknown): Record<ModelKind, GenerationParams> {
+function sanitizeParams(v: unknown): Record<ModelKind, GenerationParamsConfig> {
   if (!v || typeof v !== "object") return { ...DEFAULT_PARAMS_BY_KIND }
-  const raw = v as Record<string, Record<string, number>>
+  const raw = v as Record<string, Partial<GenerationParamsConfig>>
   const result = { ...DEFAULT_PARAMS_BY_KIND }
   for (const kind of ["base", "custom_voice", "voice_design"] as ModelKind[]) {
     if (raw[kind] && typeof raw[kind] === "object") {
@@ -31,7 +36,7 @@ function sanitizeParams(v: unknown): Record<ModelKind, GenerationParams> {
 }
 
 export function useUserConfig() {
-  const defaultParams = useStorage<Record<ModelKind, GenerationParams>>(
+  const defaultParams = useStorage<Record<ModelKind, GenerationParamsConfig>>(
     "qwen-tts:user-config:default-params",
     { ...DEFAULT_PARAMS_BY_KIND },
     localStorage,

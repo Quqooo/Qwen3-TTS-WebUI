@@ -25,12 +25,17 @@ export function useBatchRequestBuilder() {
       text: row.text,
       language: row.language,
       kind: row.modelKind,
-      output_format: "wav",
-      output_sample_rate: 24000,
-      gain: 0,
+      output: {
+        format: "wav",
+        sample_rate: 24000,
+        gain: 0,
+      },
       streaming: false,
-      split_enabled: false,
-      generation_params: row.generationParams,
+      ...(row.generationParams.enabled ? {
+        generation_params: Object.fromEntries(
+          Object.entries(row.generationParams).filter(([key, value]) => key !== "enabled" && value !== undefined),
+        ),
+      } : {}),
     }
 
     if (row.modelKind === "base") {

@@ -11,6 +11,7 @@ _GENERATION_OPTIONS = {
     "do_sample", "top_k", "top_p", "temperature", "repetition_penalty",
     "subtalker_dosample", "subtalker_top_k", "subtalker_top_p",
     "subtalker_temperature", "max_new_tokens", "min_new_tokens",
+    "non_streaming_mode",
 }
 
 

@@ -54,7 +54,7 @@ function onRefAudio(file: File | null) {
 const {
   bindAudioPlayer,
   text, outputFormat, sampleRate, gain, emitEvery, decodeWindow, overlapSamples, maxFrames, chunkSize,
-  splitMode, streamingEnabled, splitChars, isGenerating, genElapsed,
+  splitMode, streamingEnabled, splitChars, parityMode, isGenerating, genElapsed,
   resultAudioUrl, resultDuration, genTime, rtf, statusMessage, genParams,
   synthesisText, generate, stop,
 } = useSynthesisSession({
@@ -204,7 +204,9 @@ onMounted(async () => {
         v-model:overlap-samples="overlapSamples"
         v-model:max-frames="maxFrames"
         v-model:chunk-size="chunkSize"
+        v-model:parity-mode="parityMode"
         :faster-branch="modelStore.isFasterBranch"
+        :allow-parity-mode="modelStore.isFasterBranch"
       />
 
       <SynthesisOutputControls

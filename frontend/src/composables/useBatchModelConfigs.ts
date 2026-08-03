@@ -1,13 +1,13 @@
 import { computed, ref, type Ref } from "vue"
 import { useStorage } from "@vueuse/core"
 import type { ModelConfig } from "../components/batch/ModelConfigPanel.vue"
-import type { GenerationParams, ModelKind } from "../types"
+import type { GenerationParamsConfig, ModelKind } from "../types"
 import type { useModelStore } from "../stores/model"
 import type { useVoiceStore } from "../stores/voice"
 
 type ModelStore = ReturnType<typeof useModelStore>
 type VoiceStore = ReturnType<typeof useVoiceStore>
-type DefaultParams = Record<ModelKind, GenerationParams>
+type DefaultParams = Record<ModelKind, GenerationParamsConfig>
 type ConfigStore = Record<ModelKind, Ref<ModelConfig>>
 
 export interface BatchModelConfigOptions {

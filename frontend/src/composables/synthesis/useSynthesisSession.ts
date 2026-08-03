@@ -1,6 +1,6 @@
 import { ref, computed, onBeforeUnmount } from "vue"
 import { synthesisApi, getBlobDuration, pcm16ToWav } from "../../api/synthesis"
-import type { ModelKind, SynthesisRequest, GenerationParams as GenParams } from "../../types"
+import type { ModelKind, SynthesisRequest, GenerationParamsConfig as GenParams } from "../../types"
 import { useUserConfig } from "../useUserConfig"
 import { useModelStore } from "../../stores/model"
 import { t } from "../../lang"
@@ -25,6 +25,7 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
   const overlapSamples = ref(0)
   const maxFrames = ref(10000)
   const chunkSize = ref(12)
+  const parityMode = ref(false)
   const splitMode = ref<"" | "split" | "stream">("")
   const streamingEnabled = computed(() => splitMode.value === "stream")
   const splitChars = ref(".。!！?？\\n")
@@ -102,22 +103,32 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
         language: lang,
         kind,
         ...(await buildRequestExtras()),
-        output_format: streamingEnabled.value ? "pcm" : outputFormat.value,
-        output_sample_rate: parseInt(sampleRate.value),
-        gain: gain.value,
+        output: {
+          format: streamingEnabled.value ? "pcm" : outputFormat.value,
+          sample_rate: parseInt(sampleRate.value),
+          gain: gain.value,
+        },
         streaming: streamingEnabled.value,
-        // Faster 分支只传 chunk_size；其他分支不传 chunk_size
-        ...(modelStore.isFasterBranch ? {
-          chunk_size: chunkSize.value,
-        } : {
-          emit_every_frames: emitEvery.value,
-          decode_window_frames: decodeWindow.value,
-          overlap_samples: overlapSamples.value,
-          max_frames: streamingEnabled.value ? maxFrames.value : undefined,
-        }),
-        split_enabled: splitMode.value === "split",
-        split_characters: splitMode.value === "split" ? [splitChars.value] : undefined,
-        generation_params: { ...genParams.value },
+        ...(splitMode.value === "split" ? { split_string: [splitChars.value] } : {}),
+        ...(genParams.value.enabled ? {
+          generation_params: Object.fromEntries(
+            Object.entries(genParams.value).filter(([key, value]) => key !== "enabled" && key !== "parity_mode" && value !== undefined),
+          ),
+        } : {}),
+        ...(streamingEnabled.value && !modelStore.isFasterBranch ? {
+          dffdeeq: {
+            emit_every_frames: emitEvery.value,
+            decode_window_frames: decodeWindow.value,
+            overlap_samples: overlapSamples.value,
+            max_frames: maxFrames.value,
+          },
+        } : {}),
+        ...(streamingEnabled.value && modelStore.isFasterBranch ? {
+          andimarafioti: {
+            chunk_size: chunkSize.value,
+            ...(kind === "base" ? { parity_mode: parityMode.value } : {}),
+          },
+        } : {}),
       }
       const blob = streamingEnabled.value
         ? await synthesisApi.synthesizePcmStream(
@@ -198,6 +209,7 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
     overlapSamples,
     maxFrames,
     chunkSize,
+    parityMode,
     splitMode,
     streamingEnabled,
     splitChars,

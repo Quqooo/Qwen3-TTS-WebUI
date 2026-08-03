@@ -1,4 +1,4 @@
-import type { ModelKind, GenerationParams as GenParams } from "../types"
+import type { ModelKind, GenerationParamsConfig as GenParams } from "../types"
 
 export interface BatchRow {
   id: string

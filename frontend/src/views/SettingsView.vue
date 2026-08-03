@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue"
 import { Save, Info, FolderOpen, Volume2, ExternalLink, XCircle, RefreshCw } from "@lucide/vue"
-import type { ModelKind, GenerationParams as GenParams } from "../types"
+import type { ModelKind, GenerationParamsConfig as GenParams } from "../types"
 import { settingsApi } from "../api/settings"
 import { modelsApi } from "../api/models"
 import { api } from "../api/client"
@@ -44,7 +44,10 @@ function applySettings(data: SettingsData) {
 
 function updateParam(key: keyof GenParams, raw: string) {
   const num = parseFloat(raw)
-  if (!isNaN(num)) defaultParams.value[selectedKind.value] = { ...defaultParams.value[selectedKind.value], [key]: num }
+  if (!isNaN(num)) {
+    const value = Number(num.toFixed(4))
+    defaultParams.value[selectedKind.value] = { ...defaultParams.value[selectedKind.value], [key]: value }
+  }
 }
 
 const { defaultParams, globalVolume } = useUserConfig()
@@ -155,15 +158,20 @@ function onConcurrentWheel(ev: WheelEvent) {
 }
 
 function resetDefaultParams() {
-  const defaults = {
+  const defaults: GenParams = {
+    enabled: false,
+    do_sample: true,
     temperature: 0.9,
     top_k: 50,
     top_p: 1.0,
     repetition_penalty: 1.05,
-    max_new_tokens: 8192,
+    subtalker_dosample: true,
     subtalker_top_k: 50,
     subtalker_top_p: 1.0,
     subtalker_temperature: 0.9,
+    min_new_tokens: undefined,
+    max_new_tokens: 2048,
+    non_streaming_mode: undefined,
   }
   defaultParams.value[selectedKind.value] = { ...defaults }
 }
@@ -512,7 +520,7 @@ onMounted(async () => {
                     <div class="grid grid-cols-2 gap-x-4 gap-y-3">
                       <div class="space-y-1">
                         <label class="text-xs text-muted-foreground">{{ $t('views.settings.temperature') }}</label>
-                        <input type="number" step="0.1" min="0" max="2" class="w-full px-3 py-1.5 text-sm" :value="defaultParams[selectedKind].temperature" @input="updateParam('temperature', ($event.target as HTMLInputElement).value)" />
+                        <input type="number" step="0.1" min="0.1" max="10" class="w-full px-3 py-1.5 text-sm" :value="defaultParams[selectedKind].temperature" @input="updateParam('temperature', ($event.target as HTMLInputElement).value)" />
                       </div>
                       <div class="space-y-1">
                         <label class="text-xs text-muted-foreground">{{ $t('views.settings.topK') }}</label>
@@ -520,7 +528,7 @@ onMounted(async () => {
                       </div>
                       <div class="space-y-1">
                         <label class="text-xs text-muted-foreground">{{ $t('views.settings.topP') }}</label>
-                        <input type="number" step="0.05" min="0" max="1" class="w-full px-3 py-1.5 text-sm" :value="defaultParams[selectedKind].top_p" @input="updateParam('top_p', ($event.target as HTMLInputElement).value)" />
+                        <input type="number" step="0.01" min="0.01" max="1" class="w-full px-3 py-1.5 text-sm" :value="defaultParams[selectedKind].top_p" @input="updateParam('top_p', ($event.target as HTMLInputElement).value)" />
                       </div>
                       <div class="space-y-1">
                         <label class="text-xs text-muted-foreground">{{ $t('views.settings.repPenalty') }}</label>
@@ -536,11 +544,11 @@ onMounted(async () => {
                       </div>
                       <div class="space-y-1">
                         <label class="text-xs text-muted-foreground">{{ $t('views.settings.subTopP') }}</label>
-                        <input type="number" step="0.05" min="0" max="1" class="w-full px-3 py-1.5 text-sm" :value="defaultParams[selectedKind].subtalker_top_p" @input="updateParam('subtalker_top_p', ($event.target as HTMLInputElement).value)" />
+                        <input type="number" step="0.01" min="0.01" max="1" class="w-full px-3 py-1.5 text-sm" :value="defaultParams[selectedKind].subtalker_top_p" @input="updateParam('subtalker_top_p', ($event.target as HTMLInputElement).value)" />
                       </div>
                       <div class="space-y-1">
                         <label class="text-xs text-muted-foreground">{{ $t('views.settings.subTemperature') }}</label>
-                        <input type="number" step="0.1" min="0" max="2" class="w-full px-3 py-1.5 text-sm" :value="defaultParams[selectedKind].subtalker_temperature" @input="updateParam('subtalker_temperature', ($event.target as HTMLInputElement).value)" />
+                        <input type="number" step="0.1" min="0.1" max="10" class="w-full px-3 py-1.5 text-sm" :value="defaultParams[selectedKind].subtalker_temperature" @input="updateParam('subtalker_temperature', ($event.target as HTMLInputElement).value)" />
                       </div>
                     </div>
                   </div>

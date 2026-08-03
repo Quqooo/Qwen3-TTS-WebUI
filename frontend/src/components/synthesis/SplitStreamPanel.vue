@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import type { Component } from "vue"
-import { Scissors, Radio } from "@lucide/vue"
+import { CircleHelp, Scissors, Radio } from "@lucide/vue"
 import SegmentPanel from "./SegmentPanel.vue"
 import type { Segment } from "./SegmentPanel.vue"
 import { t } from "../../lang"
@@ -14,7 +14,9 @@ withDefaults(defineProps<{
   overlapSamples?: number
   maxFrames?: number
   chunkSize?: number
+  parityMode?: boolean
   fasterBranch?: boolean
+  allowParityMode?: boolean
 }>(), {
   splitChars: t('components.splitStreamPanel.defaultSplitChars'),
   emitEvery: 4,
@@ -22,7 +24,9 @@ withDefaults(defineProps<{
   overlapSamples: 0,
   maxFrames: 10000,
   chunkSize: 12,
+  parityMode: false,
   fasterBranch: false,
+  allowParityMode: false,
 })
 
 const emit = defineEmits<{
@@ -33,6 +37,7 @@ const emit = defineEmits<{
   (e: "update:overlapSamples", val: number): void
   (e: "update:maxFrames", val: number): void
   (e: "update:chunkSize", val: number): void
+  (e: "update:parityMode", val: boolean): void
 }>()
 
 const segments = computed<Segment[]>(() => [
@@ -73,6 +78,22 @@ const segments = computed<Segment[]>(() => [
             class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
             @input="emit('update:chunkSize', parseInt(($event.target as HTMLInputElement).value) || 12)"
           />
+        </div>
+        <div v-if="allowParityMode" class="flex items-center gap-1.5 text-xs whitespace-nowrap">
+          <span class="flex items-center gap-1 text-muted-foreground">
+            {{ $t('components.splitStreamPanel.parityMode') }}
+            <CircleHelp class="w-3.5 h-3.5" v-tooltip="$t('components.splitStreamPanel.parityTooltip')" />
+          </span>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="parityMode"
+            class="relative inline-flex h-4 w-7 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200"
+            :class="parityMode ? 'bg-primary' : 'bg-secondary'"
+            @click="emit('update:parityMode', !parityMode)"
+          >
+            <span class="pointer-events-none block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200" :class="parityMode ? 'translate-x-3' : 'translate-x-0'" />
+          </button>
         </div>
       </div>
       <div v-else class="flex flex-wrap items-center gap-3">
