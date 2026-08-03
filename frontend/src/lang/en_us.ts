@@ -58,8 +58,6 @@ export const en_us = {
   layout: {
     title: 'Qwen3-TTS',
     subtitle: 'WebUI',
-    version: 'v0.0.4',
-    copyright: 'Based on Qwen3-TTS',
     noModelLoaded: 'No model loaded',
     ready: 'Ready',
     notStarted: 'Not started',
@@ -442,7 +440,6 @@ export const en_us = {
       chunk: 'chunk_size:',
       parityMode: 'parity_mode',
       parityTooltip: 'Only the Faster streaming voice-clone path supports this parameter. It uses a path closer to the original implementation and may reduce speed.',
-      defaultSplitChars: '.!?\\n',
     },
     batchAudioOutput: {
       title: 'Composition Output',
@@ -451,8 +448,6 @@ export const en_us = {
       downloadZip: 'Download ZIP',
       exportSubtitle: 'Export Subtitles',
       downloadFinal: 'Download Final Audio',
-      defaultTime: '--:--',
-      defaultRtf: '--',
     },
     batchGenerationControls: {
       format: 'Format',

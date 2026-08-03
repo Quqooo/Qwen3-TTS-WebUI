@@ -18,7 +18,7 @@ withDefaults(defineProps<{
   fasterBranch?: boolean
   allowParityMode?: boolean
 }>(), {
-  splitChars: t('components.splitStreamPanel.defaultSplitChars'),
+  splitChars: '.。!！?？\n',
   emitEvery: 8,
   decodeWindow: 80,
   overlapSamples: 0,

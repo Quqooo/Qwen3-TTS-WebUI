@@ -58,8 +58,6 @@ export const zh_cn = {
   layout: {
     title: 'Qwen3-TTS',
     subtitle: 'WebUI',
-    version: 'v0.0.4',
-    copyright: '基于 Qwen3-TTS',
     noModelLoaded: '未加载模型',
     ready: '就绪',
     notStarted: '未启动',
@@ -442,7 +440,6 @@ export const zh_cn = {
       chunk: 'chunk_size:',
       parityMode: 'parity_mode',
       parityTooltip: '仅 Faster 分支的音色克隆流式路径支持此参数。开启后使用更接近原始实现的推理路径，可能降低速度。',
-      defaultSplitChars: '.。!！?？\\n',
     },
     batchAudioOutput: {
       title: '合成输出',
@@ -451,8 +448,6 @@ export const zh_cn = {
       downloadZip: '下载压缩包',
       exportSubtitle: '导出字幕',
       downloadFinal: '下载最终音频',
-      defaultTime: '--:--',
-      defaultRtf: '--',
     },
     batchGenerationControls: {
       format: '格式',
