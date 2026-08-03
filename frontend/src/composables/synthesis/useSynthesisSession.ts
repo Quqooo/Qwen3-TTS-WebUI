@@ -20,7 +20,7 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
   const outputFormat = ref("wav")
   const sampleRate = ref("24000")
   const gain = ref(0)
-  const emitEvery = ref(4)
+  const emitEvery = ref(8)
   const decodeWindow = ref(80)
   const overlapSamples = ref(0)
   const maxFrames = ref(10000)

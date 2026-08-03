@@ -19,7 +19,7 @@ withDefaults(defineProps<{
   allowParityMode?: boolean
 }>(), {
   splitChars: t('components.splitStreamPanel.defaultSplitChars'),
-  emitEvery: 4,
+  emitEvery: 8,
   decodeWindow: 80,
   overlapSamples: 0,
   maxFrames: 10000,
@@ -106,7 +106,7 @@ const segments = computed<Segment[]>(() => [
             :value="emitEvery"
             :size="String(emitEvery).length || 1"
             class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
-            @input="emit('update:emitEvery', parseInt(($event.target as HTMLInputElement).value) || 4)"
+            @input="emit('update:emitEvery', parseInt(($event.target as HTMLInputElement).value) || 8)"
           />
         </div>
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
