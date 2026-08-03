@@ -3,7 +3,7 @@ import asyncio
 import logging
 from pathlib import Path
 from fastapi import APIRouter
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, Field, StrictInt, model_validator
 from ..config import parse_gpu_devices, settings, save_settings
 from ..branches import discover_branches
 from ..errors import raise_error
@@ -18,6 +18,18 @@ _MIN_IDLE_UNLOAD = 0
 _MAX_IDLE_UNLOAD = 86400
 _MIN_MAX_SEQ_LEN = 1
 _MAX_MAX_SEQ_LEN = 32767
+
+_BATCH_LIMIT_FIELDS = (
+    "max_segments",
+    "max_output_samples",
+    "max_decoded_samples",
+    "max_total_decoded_samples",
+    "max_time_stretch_rate",
+    "max_audio_mib",
+    "max_total_audio_mib",
+    "min_sample_rate",
+    "max_sample_rate",
+)
 
 
 def _validate_dir_path(value: str, field_name: str, must_exist: bool = True) -> Path:
@@ -60,6 +72,34 @@ def _validate_branch(value: str) -> str:
     return value.strip()
 
 
+class BatchComposerSettings(BaseModel):
+    """批量音频合成的资源与输入限制。"""
+    max_segments: StrictInt | None = Field(None, ge=1, le=100_000)
+    max_output_samples: StrictInt | None = Field(None, ge=1, le=2_000_000_000)
+    max_decoded_samples: StrictInt | None = Field(None, ge=1, le=2_000_000_000)
+    max_total_decoded_samples: StrictInt | None = Field(None, ge=1, le=2_000_000_000)
+    max_time_stretch_rate: float | None = Field(None, ge=1.0, le=100.0)
+    max_audio_mib: StrictInt | None = Field(None, ge=1, le=4096)
+    max_total_audio_mib: StrictInt | None = Field(None, ge=1, le=16384)
+    min_sample_rate: StrictInt | None = Field(None, ge=1000, le=768000)
+    max_sample_rate: StrictInt | None = Field(None, ge=1000, le=768000)
+
+    @model_validator(mode="after")
+    def validate_related_limits(self):
+        current = settings.batch_composer or {}
+        values = {
+            key: getattr(self, key) if getattr(self, key) is not None else current.get(key)
+            for key in _BATCH_LIMIT_FIELDS
+        }
+        if values["max_total_audio_mib"] < values["max_audio_mib"]:
+            raise ValueError("max_total_audio_mib must be >= max_audio_mib")
+        if values["max_total_decoded_samples"] < values["max_decoded_samples"]:
+            raise ValueError("max_total_decoded_samples must be >= max_decoded_samples")
+        if values["max_sample_rate"] < values["min_sample_rate"]:
+            raise ValueError("max_sample_rate must be >= min_sample_rate")
+        return self
+
+
 class SettingsUpdate(BaseModel):
     """设置更新请求体"""
     gpu_devices: str | None = None
@@ -72,6 +112,7 @@ class SettingsUpdate(BaseModel):
     model_dir: str | None = None
     voice_dir: str | None = None
     max_seq_len: StrictInt | None = Field(None, ge=_MIN_MAX_SEQ_LEN, le=_MAX_MAX_SEQ_LEN)
+    batch_composer: BatchComposerSettings | None = None
 
 
 @router.get("/api/settings")

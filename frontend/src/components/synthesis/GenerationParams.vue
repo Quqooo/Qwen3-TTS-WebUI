@@ -140,7 +140,7 @@ function triStateValue(value: boolean | undefined): string {
                 />
               </div>
             </div>
-            <div class="grid grid-cols-3 gap-3">
+            <section class="border-t pt-1 space-y-1">
               <div class="space-y-1.5">
                 <label class="text-[10px] text-muted-foreground">{{ $t('components.generationParams.topK') }}</label>
                 <input type="number" min="0" max="32767" step="1" :value="valueOf('top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />
@@ -153,7 +153,7 @@ function triStateValue(value: boolean | undefined): string {
                 <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.temperatureTooltip')">{{ $t('components.generationParams.temperature') }}</label>
                 <input type="number" min="0.1" max="10" step="0.1" :value="valueOf('temperature')" placeholder="0.9" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('temperature', ($event.target as HTMLInputElement).value, 0.1, 10)" />
               </div>
-            </div>
+            </section>
           </section>
 
           <section class="border-t pt-3 space-y-3">
