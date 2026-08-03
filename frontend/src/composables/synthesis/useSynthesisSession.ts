@@ -52,7 +52,14 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
   }
   const genTime = ref<number | undefined>(undefined)
   const rtf = ref<number | undefined>(undefined)
-  const statusMessage = ref("")
+  const statusKind = ref<"generating" | "firstChunkArrived" | "generated" | "stopped" | "failed" | "">("")
+  const statusError = ref("")
+  // 状态文本按语言动态翻译；后端返回的原始错误信息原样显示
+  const statusMessage = computed(() => {
+    if (statusError.value) return statusError.value
+    if (!statusKind.value) return ""
+    return t(`views.${kindPath(kind)}.${statusKind.value}`)
+  })
 
   const { defaultParams } = useUserConfig()
   const genParams = ref<GenParams>({ ...(defaultParams.value as any)[kind] })
@@ -60,14 +67,6 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
   let generationEpoch = 0
   const pcmBuffer = ref<Uint8Array[]>([])
   const synthesisText = ref("")
-
-  const i18n = {
-    generating: t(`views.${kindPath(kind)}.generating`),
-    firstChunkArrived: t(`views.${kindPath(kind)}.firstChunkArrived`),
-    generated: t(`views.${kindPath(kind)}.generated`),
-    stopped: t(`views.${kindPath(kind)}.stopped`),
-    failed: t(`views.${kindPath(kind)}.failed`),
-  }
 
   async function generate(model: string, lang: string) {
     const epoch = ++generationEpoch
@@ -82,7 +81,8 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
     audioPlayerRef.value?.stopStream()
     clearResultAudioUrl()
     resultDuration.value = undefined
-    statusMessage.value = i18n.generating
+    statusKind.value = "generating"
+    statusError.value = ""
     audioPlayerRef.value?.resetVisual()
     genTimer = setInterval(() => {
       genElapsed.value = (performance.now() - genStartTime.value) / 1000
@@ -136,7 +136,7 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
             (chunk) => {
               if (controller.signal.aborted || epoch !== generationEpoch) return
               pcmBuffer.value.push(chunk)
-              if (pcmBuffer.value.length === 1) statusMessage.value = i18n.firstChunkArrived
+              if (pcmBuffer.value.length === 1) statusKind.value = "firstChunkArrived"
               audioPlayerRef.value?.appendChunk(chunk, parseInt(sampleRate.value))
             },
             controller.signal,
@@ -167,13 +167,23 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
       const finalDur = resultDuration.value ?? 0
       rtf.value = genTime.value / Math.max(finalDur, 0.01)
       isGenerating.value = false
-      statusMessage.value = i18n.generated
+      statusKind.value = "generated"
+      statusError.value = ""
       synthesisText.value = text.value
     } catch (e: any) {
       if (epoch !== generationEpoch) return
       clearInterval(genTimer)
       isGenerating.value = false
-      statusMessage.value = e?.name === "AbortError" ? i18n.stopped : (e?.message ?? i18n.failed)
+      if (e?.name === "AbortError") {
+        statusKind.value = "stopped"
+        statusError.value = ""
+      } else if (e?.message) {
+        statusKind.value = ""
+        statusError.value = e.message
+      } else {
+        statusKind.value = "failed"
+        statusError.value = ""
+      }
       if (e?.name === "AbortError") audioPlayerRef.value?.stopStream()
     } finally {
       if (generationController === controller) generationController = null
@@ -186,7 +196,8 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
     generationController = null
     clearInterval(genTimer)
     isGenerating.value = false
-    statusMessage.value = i18n.stopped
+    statusKind.value = "stopped"
+    statusError.value = ""
     audioPlayerRef.value?.stopStream()
   }
 
