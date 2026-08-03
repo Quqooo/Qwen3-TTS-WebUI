@@ -18,10 +18,18 @@ _logger = logging.getLogger("qwen-webui.ws")
 router = APIRouter(tags=["websocket"])
 
 _connections: Set[WebSocket] = set()
+_tracker_broadcast_lock = asyncio.Lock()
+
+
+def _tracker_status_listener(per_model, inference_total):
+    return broadcast_tracker_status(per_model=per_model, inference_total=inference_total)
 
 
 def _encode(data: dict) -> str:
     return json.dumps(data, ensure_ascii=False)
+
+
+get_tracker().set_status_listener(_tracker_status_listener)
 
 
 async def _build_cache_message():
@@ -120,9 +128,15 @@ async def broadcast_backend_status():
     await _broadcast(_build_backend_message())
 
 
-async def _build_tracker_message():
+def _build_tracker_message(
+    per_model=None,
+    inference_total=None,
+):
     tracker = get_tracker()
-    per_model = tracker.status()
+    if per_model is None:
+        per_model = tracker.status()
+    if inference_total is None:
+        inference_total = tracker.inference_count
     return _encode({
         "type": "tracker",
         "data": {
@@ -130,16 +144,17 @@ async def _build_tracker_message():
                 mid: sum(gpu_counts.values()) for mid, gpu_counts in per_model.items()
             },
             "inference_gpus": per_model,
-            "inference_total": tracker.inference_count,
+            "inference_total": inference_total,
         },
     })
 
 
-async def broadcast_tracker_status():
-    """向所有已连接客户端推送推理任务状态。"""
+async def broadcast_tracker_status(*, per_model=None, inference_total=None):
+    """向所有已连接客户端推送推理任务状态快照。"""
     if not _connections:
         return
-    await _broadcast(await _build_tracker_message())
+    async with _tracker_broadcast_lock:
+        await _broadcast(_build_tracker_message(per_model, inference_total))
 
 
 @router.websocket("/api/ws/cache")
@@ -151,6 +166,7 @@ async def ws_cache(websocket: WebSocket):
         await _broadcast(await _build_cache_message())
         await _broadcast(await _build_worker_message())
         await _broadcast(_build_backend_message())
+        await _broadcast(_build_tracker_message())
 
         while True:
             # 状态检查：_broadcast 向本连接 send 失败会把 application_state

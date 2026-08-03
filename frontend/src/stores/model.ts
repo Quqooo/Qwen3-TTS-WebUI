@@ -1,6 +1,6 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
-import type { ModelInfo, ModelKind, ModelCacheStatus, WorkerStatus } from "../types"
+import type { ModelInfo, ModelKind, ModelCacheStatus, WorkerStatus, TrackerStatus } from "../types"
 import { modelsApi } from "../api/models"
 import { settingsApi } from "../api/settings"
 import { createCacheWebSocket } from "../api/ws"
@@ -14,6 +14,11 @@ export const useModelStore = defineStore("model", () => {
     usage_order: [],
   })
   const workerStatus = ref<WorkerStatus>({ alive: false, error: null })
+  const trackerStatus = ref<TrackerStatus>({
+    inference_counts: {},
+    inference_gpus: {},
+    inference_total: 0,
+  })
   const wsConnected = ref(false)
   const backendBranch = ref("")
   const isFasterBranch = computed(() => backendBranch.value === "andimarafioti/faster-qwen3-tts")
@@ -47,6 +52,7 @@ export const useModelStore = defineStore("model", () => {
       (msg) => {
         if (msg.type === "cache") cacheStatus.value = msg.data
         else if (msg.type === "worker") workerStatus.value = msg.data
+        else if (msg.type === "tracker") trackerStatus.value = msg.data
         else if (msg.type === "backend") backendBranch.value = msg.data.backend_branch
       },
       (connected) => {
@@ -99,6 +105,7 @@ export const useModelStore = defineStore("model", () => {
     activeModelId,
     cacheStatus,
     workerStatus,
+    trackerStatus,
     wsConnected,
     backendBranch,
     isFasterBranch,

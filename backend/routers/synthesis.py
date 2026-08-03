@@ -26,7 +26,7 @@ from ..branches.base import NotSupportedError
 from ..cache import get_cache_manager
 from ..config import require_qwen, resolve_model_path
 from ..errors import APIError, raise_error
-from ..routers.ws import broadcast_cache_status, broadcast_tracker_status
+from ..routers.ws import broadcast_cache_status
 from ..voices import manager as voice_manager
 
 router = APIRouter(prefix="/api", tags=["synthesis"], dependencies=[Depends(require_qwen)])
@@ -165,10 +165,7 @@ async def _do_synthesize(body: SynthesisRequest):
                 await lease.wait_stoppable()
             await lease.release()
             lease_released = True
-            asyncio.create_task(broadcast_tracker_status())
             asyncio.create_task(broadcast_cache_status())
-
-    asyncio.create_task(broadcast_tracker_status())
     try:
         if kind == "base":
             result = await _handle_base_synthesis(

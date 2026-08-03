@@ -6,6 +6,7 @@
 """
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Dict, Optional
 
 _logger = logging.getLogger("qwen-webui.tracker")
@@ -17,12 +18,30 @@ class ModelWorkTracker:
         self._inference_counts: Dict[str, Dict[str, int]] = {}
         self._inference_total = 0
         self._lock = asyncio.Lock()
+        self._status_listener: Optional[
+            Callable[[Dict[str, Dict[str, int]], int], Awaitable[None]]
+        ] = None
+
+    def set_status_listener(
+        self,
+        listener: Optional[Callable[[Dict[str, Dict[str, int]], int], Awaitable[None]]],
+    ) -> None:
+        self._status_listener = listener
+
+    def _schedule_status_broadcast(self) -> None:
+        """按本次变更的快照异步推送，避免快速变更被合并。"""
+        if self._status_listener is None:
+            return
+        per_model = self.status()
+        inference_total = self._inference_total
+        asyncio.create_task(self._status_listener(per_model, inference_total))
 
     async def acquire_inference(self, model_id: str, gpu: str = "0") -> None:
         async with self._lock:
             per_gpu = self._inference_counts.setdefault(model_id, {})
             per_gpu[gpu] = per_gpu.get(gpu, 0) + 1
             self._inference_total += 1
+            self._schedule_status_broadcast()
 
     async def release_inference(self, model_id: str, gpu: str = "0") -> None:
         async with self._lock:
@@ -36,6 +55,7 @@ class ModelWorkTracker:
                 if not per_gpu:
                     self._inference_counts.pop(model_id, None)
             self._inference_total = max(0, self._inference_total - 1)
+            self._schedule_status_broadcast()
 
     def is_busy(self, model_id: str, gpu: Optional[str] = None) -> bool:
         per_gpu = self._inference_counts.get(model_id)

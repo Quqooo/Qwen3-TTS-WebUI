@@ -59,7 +59,7 @@ const maxConcurrent = ref(0)
 const idleTimeout = ref(0)
 const workerIdleTimeout = ref(0)
 const { success: toastSuccess } = useToast()
-const inferenceGpus = ref<Record<string, Record<string, number>>>({})
+const inferenceGpus = computed(() => modelStore.trackerStatus.inference_gpus)
 
 // 推理队列展示行：模型 × GPU 实例
 const inferenceRows = computed(() => {
@@ -136,7 +136,7 @@ async function saveSettings() {
 async function refreshInferenceStatus() {
   try {
     const res = await api.get<{ inference_gpus: Record<string, Record<string, number>> }>("/tracker/status")
-    inferenceGpus.value = res.inference_gpus ?? {}
+    modelStore.trackerStatus.inference_gpus = res.inference_gpus ?? {}
   } catch {
     // ignore
   }
