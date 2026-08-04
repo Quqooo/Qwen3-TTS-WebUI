@@ -31,6 +31,12 @@ const triStateOptions = computed(() => [
   { value: "true", label: t("components.generationParams.enabledMode") },
   { value: "false", label: t("components.generationParams.disabledMode") },
 ])
+const subtalkerHeaderTooltip = computed(() => {
+  const base = t("components.generationParams.subtalkerSectionTooltip")
+  return isFasterBranch.value
+    ? `${base}\n${t("components.generationParams.subtalkerTooltip")}`
+    : base
+})
 
 function patch(partial: Partial<GenerationParamsConfig>) {
   if (props.disabled) return
@@ -117,10 +123,13 @@ function triStateValue(value: boolean | undefined): string {
       <div v-if="open" class="overflow-hidden">
         <div class="px-4 pb-4 space-y-4 border-t pt-3" :class="!customParamsEnabled ? 'opacity-60' : ''">
           <section class="space-y-3">
-            <div class="text-xs font-medium text-muted-foreground">{{ $t('components.generationParams.talkerSection') }}</div>
+            <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              {{ $t('components.generationParams.talkerSection') }}
+              <CircleHelp class="w-3.5 h-3.5" v-tooltip="$t('components.generationParams.talkerSectionTooltip')" />
+            </div>
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground">{{ $t('components.generationParams.doSample') }}</label>
+                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.doSampleTooltip')">{{ $t('components.generationParams.doSample') }}</label>
                 <AppSelect
                   compact
                   :model-value="samplingValue(modelValue.do_sample)"
@@ -142,7 +151,7 @@ function triStateValue(value: boolean | undefined): string {
             </div>
             <section class="border-t pt-3 grid grid-cols-3 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground">{{ $t('components.generationParams.topK') }}</label>
+                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topKTooltip')">{{ $t('components.generationParams.topK') }}</label>
                 <input type="number" min="0" max="32767" step="1" :value="valueOf('top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />
               </div>
               <div class="space-y-1.5">
@@ -159,15 +168,15 @@ function triStateValue(value: boolean | undefined): string {
           <section class="border-t pt-3 space-y-3">
             <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               {{ $t('components.generationParams.subtalkerSection') }}
-              <CircleHelp v-if="isFasterBranch" class="w-3.5 h-3.5" v-tooltip="$t('components.generationParams.subtalkerTooltip')" />
+              <CircleHelp class="w-3.5 h-3.5" v-tooltip="subtalkerHeaderTooltip" />
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground">{{ $t('components.generationParams.doSample') }}</label>
+                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.doSampleTooltip')">{{ $t('components.generationParams.doSample') }}</label>
                 <AppSelect compact :model-value="samplingValue(modelValue.subtalker_dosample)" :options="samplingOptions" :disabled="!customParamsEnabled" @update:model-value="setSampling('subtalker_dosample', $event)" />
               </div>
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground">{{ $t('components.generationParams.topK') }}</label>
+                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topKTooltip')">{{ $t('components.generationParams.topK') }}</label>
                 <input type="number" min="0" max="32767" step="1" :value="valueOf('subtalker_top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.subtalker_dosample === false" class="param-input" @change="setNumber('subtalker_top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />
               </div>
             </div>
@@ -187,16 +196,19 @@ function triStateValue(value: boolean | undefined): string {
             <div class="text-xs font-medium text-muted-foreground">{{ $t('components.generationParams.lengthSection') }}</div>
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground">{{ $t('components.generationParams.minNewTokens') }}</label>
+                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.minNewTokensTooltip')">{{ $t('components.generationParams.minNewTokens') }}</label>
                 <input type="number" min="1" max="32767" step="1" :value="valueOf('min_new_tokens')" :placeholder="$t('components.generationParams.notSet')" :disabled="!customParamsEnabled" class="param-input" @change="setNumber('min_new_tokens', ($event.target as HTMLInputElement).value, 1, 32767, true)" />
               </div>
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground">{{ $t('components.generationParams.maxNewTokens') }}</label>
+                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.maxNewTokensTooltip')">{{ $t('components.generationParams.maxNewTokens') }}</label>
                 <input type="number" min="1" max="32767" step="1" :value="valueOf('max_new_tokens')" placeholder="2048" :disabled="!customParamsEnabled" class="param-input" @change="setNumber('max_new_tokens', ($event.target as HTMLInputElement).value, 1, 32767, true)" />
               </div>
             </div>
             <div class="flex items-center justify-between gap-3">
-              <label class="text-xs text-muted-foreground">{{ $t('components.generationParams.nonStreamingMode') }}</label>
+              <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {{ $t('components.generationParams.nonStreamingMode') }}
+                <CircleHelp class="w-3.5 h-3.5" v-tooltip="$t('components.generationParams.nonStreamingModeTooltip')" />
+              </label>
               <AppSelect compact :model-value="triStateValue(modelValue.non_streaming_mode)" :options="triStateOptions" :disabled="!customParamsEnabled" @update:model-value="setTriState" />
             </div>
           </section>
