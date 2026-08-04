@@ -20,6 +20,7 @@ const emit = defineEmits<{
 }>()
 
 const trackRef = ref<HTMLElement | null>(null)
+const interacting = ref(false)
 const dragging = ref(false)
 
 const percent = computed(() => {
@@ -45,17 +46,19 @@ function valueFromClientX(clientX: number): number {
 
 function onPointerDown(event: PointerEvent) {
   if (props.disabled) return
-  dragging.value = true
+  interacting.value = true
   ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
   emit("update:modelValue", valueFromClientX(event.clientX))
 }
 
 function onPointerMove(event: PointerEvent) {
-  if (!dragging.value || props.disabled) return
+  if (!interacting.value || props.disabled) return
+  dragging.value = true
   emit("update:modelValue", valueFromClientX(event.clientX))
 }
 
 function onPointerUp() {
+  interacting.value = false
   dragging.value = false
 }
 

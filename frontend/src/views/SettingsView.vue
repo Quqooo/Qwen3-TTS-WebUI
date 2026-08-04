@@ -50,6 +50,8 @@ const { success: toastSuccess } = useToast()
 
 const loading = ref(true)
 const saving = ref(false)
+const savingText = ref(false)
+let savingTimer: ReturnType<typeof setTimeout> | undefined
 const activeSection = ref<SettingsSection>("server")
 const gpuDevices = ref("")
 const maxConcurrent = ref(1)
@@ -171,6 +173,7 @@ function resetDefaultParams() {
 
 async function saveSettings() {
   saving.value = true
+  savingTimer = setTimeout(() => { savingText.value = true }, 300)
   try {
     const res = await settingsApi.update({
       gpu_devices: gpuDevices.value,
@@ -190,6 +193,8 @@ async function saveSettings() {
     toastSuccess(t("views.settings.saved"))
   } catch {
   } finally {
+    clearTimeout(savingTimer)
+    savingText.value = false
     saving.value = false
   }
 }
@@ -321,12 +326,12 @@ onActivated(() => {
               <ExternalLink class="w-3.5 h-3.5" /> {{ $t("views.settings.apiDocs") }}
             </a>
             <button
-              class="flex items-center justify-center gap-1.5 w-full px-3 py-2.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              class="flex items-center justify-center gap-1.5 w-full px-3 py-2.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               :disabled="loading || saving"
               @click="saveSettings"
             >
               <Save class="w-3.5 h-3.5" />
-              {{ saving ? $t("views.settings.saving") : $t("views.settings.save") }}
+              {{ savingText ? $t("views.settings.saving") : $t("views.settings.save") }}
             </button>
           </div>
         </aside>

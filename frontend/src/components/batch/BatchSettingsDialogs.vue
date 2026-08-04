@@ -2,6 +2,7 @@
 import { AlertTriangle, Download, Upload, X } from "@lucide/vue"
 import ModelConfigPanel from "./ModelConfigPanel.vue"
 import type { ModelConfig } from "./ModelConfigPanel.vue"
+import AppSlider from "../common/AppSlider.vue"
 import { destructiveColor } from "../../theme"
 
 const showConfirmClear = defineModel<boolean>("showConfirmClear", { required: true })
@@ -160,15 +161,13 @@ const emit = defineEmits<{
             </div>
 
             <div>
-              <label class="text-xs text-muted-foreground mb-1.5 block">{{ $t('views.batch.moreConfigDialog.minSilence') }} {{ minSilenceMs }}</label>
-              <input v-model.number="minSilenceMs" type="range" min="0" max="2000" step="10" class="w-full accent-primary" />
-              <div class="flex justify-between text-xs text-muted-foreground/50 mt-0.5"><span>0</span><span>2000</span></div>
+              <label class="text-xs text-muted-foreground mb-1.5 block">{{ $t('views.batch.moreConfigDialog.minSilence') }}</label>
+              <AppSlider v-model="minSilenceMs" :min="0" :max="2000" :step="10" />
             </div>
 
             <div>
-              <label class="text-xs text-muted-foreground mb-1.5 block">{{ $t('views.batch.moreConfigDialog.concurrency') }} {{ concurrentTasks }}</label>
-              <input v-model.number="concurrentTasks" type="range" min="1" max="10" step="1" class="w-full accent-primary" />
-              <div class="flex justify-between text-xs text-muted-foreground/50 mt-0.5"><span>1</span><span>10</span></div>
+              <label class="text-xs text-muted-foreground mb-1.5 block">{{ $t('views.batch.moreConfigDialog.concurrency') }}</label>
+              <AppSlider v-model="concurrentTasks" :min="1" :max="10" :step="1" />
             </div>
           </div>
         </div>
