@@ -40,6 +40,7 @@ const volume = ref(globalVolume.value / 100)
 
 const localStart = ref(0)
 const localEnd = ref(0)
+const suppressLoop = ref(false)
 const clipHistory = ref<Array<{ blob: Blob; start: number; end: number }>>([])
 const savedTrimStart = ref(0)
 const savedTrimEnd = ref(0)
@@ -55,7 +56,9 @@ async function initWaveSurfer(url: string) {
   destroyWaveSurfer()
   currentTime.value = 0
   isPlaying.value = false
+  suppressLoop.value = false
   waveLoading.value = true
+  let loopPending = false
   await nextTick()
   if (token !== initToken) return
   if (!containerRef.value) { waveLoading.value = false; return }
@@ -79,7 +82,21 @@ async function initWaveSurfer(url: string) {
     localStart.value = props.trimStart ?? 0
     localEnd.value = props.trimEnd || duration.value
   })
-  ws.on("timeupdate", (t) => { currentTime.value = t })
+  ws.on("timeupdate", (t) => {
+    currentTime.value = t
+    if (trimMode.value && duration.value > 0 && !suppressLoop.value && t >= localEnd.value && !loopPending) {
+      loopPending = true
+      const target = localStart.value / duration.value
+      setTimeout(() => {
+        loopPending = false
+        if (trimMode.value && !suppressLoop.value) ws?.seekTo(target)
+      }, 0)
+    }
+  })
+  ws.on("interaction", (newTime: number) => {
+    suppressLoop.value = newTime >= localEnd.value
+  })
+  ws.on("play", () => { isPlaying.value = true; suppressLoop.value = false })
   ws.on("play", () => { isPlaying.value = true })
   ws.on("pause", () => { isPlaying.value = false })
   ws.on("finish", () => { isPlaying.value = false; ws?.seekTo(0) })
