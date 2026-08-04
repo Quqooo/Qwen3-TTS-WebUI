@@ -524,6 +524,7 @@ export const zh_cn = {
   api: {
     client: {
       backendUnavailable: 'QwenTTS 后端不可用，请在设置页面配置 QwenTTS 项目目录。',
+      connectionFailed: '无法连接到服务器，请确认后端已启动。',
       serverError: '服务器错误 ({{ status }}): {{ msg }}',
     },
     audio: {

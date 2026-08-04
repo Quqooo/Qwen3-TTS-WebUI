@@ -13,6 +13,8 @@ let nextId = 0
 
 export function useToast() {
   function show(message: string, type: Toast["type"] = "info", duration = 3000, debug?: string) {
+    const duplicate = toasts.value.find((t) => t.type === type && t.message === message)
+    if (duplicate) return duplicate.id
     const id = nextId++
     toasts.value.push({ id, message, type, duration, debug })
     return id

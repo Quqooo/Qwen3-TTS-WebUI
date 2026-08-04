@@ -41,17 +41,30 @@ function showErrorToast(status: number, detail: string, debug?: string) {
   const { error } = useToast()
   if (status === 503) {
     error(t("api.client.backendUnavailable"), undefined, debug)
+  } else if (!detail || !detail.trim()) {
+    error(t("api.client.connectionFailed"), undefined, debug)
   } else {
     error(detail, undefined, debug)
   }
 }
 
+function showConnectionError() {
+  const { error } = useToast()
+  error(t("api.client.connectionFailed"))
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${path}`
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...options.headers },
-    ...options,
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      headers: { "Content-Type": "application/json", ...options.headers },
+      ...options,
+    })
+  } catch {
+    showConnectionError()
+    throw new ApiError(0, t("api.client.backendUnavailable"))
+  }
   if (!res.ok) {
     const raw = await res.text().catch(() => "Unknown error")
     const { detail, debug } = extractErrorInfo(raw)
@@ -70,7 +83,13 @@ export const api = {
     request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   getBlob: async (path: string): Promise<Blob> => {
-    const res = await fetch(`${API_BASE}${path}`)
+    let res: Response
+    try {
+      res = await fetch(`${API_BASE}${path}`)
+    } catch {
+      showConnectionError()
+      throw new ApiError(0, t("api.client.backendUnavailable"))
+    }
     if (!res.ok) {
       const raw = await res.text().catch(() => "Unknown error")
       const { detail, debug } = extractErrorInfo(raw)

@@ -524,6 +524,7 @@ export const en_us = {
   api: {
     client: {
       backendUnavailable: 'QwenTTS backend is unavailable. Please configure the QwenTTS project directory in Settings.',
+      connectionFailed: 'Cannot connect to the server. Please make sure the backend is running.',
       serverError: 'Server error ({{ status }}): {{ msg }}',
     },
     audio: {
