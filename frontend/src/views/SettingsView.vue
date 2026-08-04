@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue"
+import { ref, computed, onMounted, onActivated } from "vue"
 import { Save, FolderOpen, Volume2, ExternalLink, XCircle, RefreshCw, Server, SlidersHorizontal, User, Shield, Settings2, Gauge } from "@lucide/vue"
 import type { ModelKind, GenerationParamsConfig as GenParams } from "../types"
 import type { BatchComposerSettings } from "../api/settings"
@@ -237,17 +237,49 @@ function onConcurrentWheel(event: WheelEvent) {
   maxConcurrent.value = Math.max(1, maxConcurrent.value + (event.deltaY > 0 ? -1 : 1))
 }
 
-onMounted(async () => {
-  loading.value = true
+function settingsSnapshot(): SettingsData {
+  return {
+    gpuDevices: gpuDevices.value,
+    maxConcurrent: maxConcurrent.value,
+    idleTimeout: idleTimeout.value,
+    workerIdleTimeout: workerIdleTimeout.value,
+    backendBranch: backendBranch.value,
+    backendBranchOptions: backendBranchOptions.value,
+    projectDir: projectDir.value,
+    envDir: envDir.value,
+    modelDir: modelDir.value,
+    voiceDir: voiceDir.value,
+    maxSeqLen: maxSeqLen.value,
+    batchComposer: { ...batchComposer.value },
+  }
+}
+
+function settingsEqual(a: SettingsData, b: SettingsData): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+let firstLoad = true
+
+async function loadSettings() {
+  const showLoading = firstLoad
+  if (showLoading) loading.value = true
   try {
     const [settings] = await Promise.all([settingsApi.get(), modelStore.refreshCacheStatus(), refreshInferenceStatus()])
-    settingsCache = fromResponse(settings)
-    applySettings(settingsCache)
+    const fresh = fromResponse(settings)
+    settingsCache = fresh
+    if (!settingsEqual(settingsSnapshot(), fresh)) applySettings(fresh)
   } catch {
-    if (settingsCache) applySettings(settingsCache)
+    if (settingsCache && !settingsEqual(settingsSnapshot(), settingsCache)) applySettings(settingsCache)
   } finally {
-    loading.value = false
+    if (showLoading) loading.value = false
+    firstLoad = false
   }
+}
+
+onMounted(loadSettings)
+
+onActivated(() => {
+  if (!firstLoad) loadSettings()
 })
 </script>
 

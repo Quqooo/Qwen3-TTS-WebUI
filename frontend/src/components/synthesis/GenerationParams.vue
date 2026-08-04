@@ -140,7 +140,7 @@ function triStateValue(value: boolean | undefined): string {
                 />
               </div>
             </div>
-            <section class="border-t pt-1 space-y-1">
+            <section class="border-t pt-3 grid grid-cols-3 gap-3">
               <div class="space-y-1.5">
                 <label class="text-[10px] text-muted-foreground">{{ $t('components.generationParams.topK') }}</label>
                 <input type="number" min="0" max="32767" step="1" :value="valueOf('top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />

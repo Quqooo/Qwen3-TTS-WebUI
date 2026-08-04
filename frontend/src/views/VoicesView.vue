@@ -365,8 +365,9 @@ async function loadModelAndPreview() {
       previewError.value = t('views.voices.decodeFailed')
     }
     await modelStore.refreshCacheStatus()
-  } catch (e: any) {
-    previewError.value = e?.message ?? t('views.voices.loadModelFailed')
+  } catch {
+    // error already shown via toast; do not persist inline error
+    previewError.value = ""
   } finally {
     previewLoading.value = false
   }
