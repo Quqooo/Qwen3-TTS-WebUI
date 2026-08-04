@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue"
+import { ref, nextTick, onActivated } from "vue"
 import { useVirtualizer } from "@tanstack/vue-virtual"
 import { Download, GripVertical, Pause, Play, Settings, Square, Trash2, WandSparkles } from "@lucide/vue"
 import BatchWaveform from "./BatchWaveform.vue"
@@ -60,6 +60,11 @@ function scrollToStart() {
 function scrollToEnd() {
   scrollBodyRef.value?.scrollTo({ top: scrollBodyRef.value.scrollHeight, behavior: "smooth" })
 }
+
+onActivated(async () => {
+  await nextTick()
+  virtualizer.value.measure()
+})
 
 defineExpose({ scrollToStart, scrollToEnd })
 </script>

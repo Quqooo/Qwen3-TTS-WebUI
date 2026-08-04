@@ -173,17 +173,48 @@ export const composeApi = {
 }
 
 export function getBlobDuration(blob: Blob): Promise<number> {
+  return blob.arrayBuffer().then((buffer) => {
+    const duration = wavDuration(buffer)
+    if (duration !== null) return duration
+    return mediaDuration(blob)
+  })
+}
+
+function wavDuration(buffer: ArrayBuffer): number | null {
+  const view = new DataView(buffer)
+  if (buffer.byteLength < 44 || view.getUint32(0, false) !== 0x52494646) return null // "RIFF"
+  if (view.getUint32(8, false) !== 0x57415645) return null // "WAVE"
+  let offset = 12
+  let byteRate = 0
+  while (offset + 8 <= buffer.byteLength) {
+    const id = view.getUint32(offset, false)
+    const size = view.getUint32(offset + 4, true)
+    const body = offset + 8
+    if (id === 0x666d7420 && size >= 16) {
+      byteRate = view.getUint32(body + 8, true)
+    } else if (id === 0x64617461) {
+      if (byteRate <= 0) return null
+      return size / byteRate
+    }
+    offset = body + size + (size % 2)
+  }
+  return null
+}
+
+function mediaDuration(blob: Blob): Promise<number> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob)
     const audio = new Audio()
-    audio.onloadedmetadata = () => {
+    let settled = false
+    const finish = (duration: number) => {
+      if (settled) return
+      settled = true
       URL.revokeObjectURL(url)
-      resolve(audio.duration)
+      resolve(duration)
     }
-    audio.onerror = () => {
-      URL.revokeObjectURL(url)
-      resolve(0)
-    }
+    audio.onloadedmetadata = () => finish(audio.duration || 0)
+    audio.onerror = () => finish(0)
     audio.src = url
+    setTimeout(() => finish(0), 3000)
   })
 }

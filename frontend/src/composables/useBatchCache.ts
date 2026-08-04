@@ -48,8 +48,8 @@ export function useBatchCache(opts: {
     }
   }
 
-  async function saveCache() {
-    if (!persistent.value) return
+  async function saveCache(force = false) {
+    if (!persistent.value && !force) return
     for (const row of rows.value) {
       if (
         row.cloneSource === "upload" &&

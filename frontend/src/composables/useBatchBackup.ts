@@ -10,7 +10,7 @@ const STORAGE_KEY = "batch_cache_persist"
 
 export interface BatchBackupOptions {
   rows: Ref<BatchRow[]>
-  saveCache: () => Promise<void>
+  saveCache: (force?: boolean) => Promise<void>
   restoreCache: () => Promise<void>
   clearAllTasks: () => Promise<void>
 }
@@ -26,7 +26,7 @@ export function useBatchBackup({
   async function exportBackup() {
     const { success, error } = useToast()
     try {
-      await saveCache()
+      await saveCache(true)
       const zip = new JSZip()
       const metadata = localStorage.getItem(STORAGE_KEY)
       if (metadata) zip.file("batch.json", metadata)
