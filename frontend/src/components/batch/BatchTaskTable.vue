@@ -176,7 +176,7 @@ defineExpose({ scrollToStart, scrollToEnd })
 
           <div class="px-2 py-2 flex items-center gap-1.5 border-r border-border/25 min-w-0">
             <button
-              class="w-6 h-6 flex items-center justify-center rounded-full shrink-0 transition-colors"
+              class="w-6 h-6 p-0 leading-none inline-flex items-center justify-center rounded-full shrink-0 transition-colors"
               :class="{
                 'bg-primary text-primary-foreground hover:opacity-90': props.rows[virtualRow.index].audioState === 'done',
                 'bg-destructive/10 text-destructive cursor-default': props.rows[virtualRow.index].audioState === 'error',
@@ -190,9 +190,9 @@ defineExpose({ scrollToStart, scrollToEnd })
               <span v-if="props.rows[virtualRow.index].audioState === 'generating'" class="block w-3 h-3">
                 <span class="block w-full h-full rounded-full border-2 border-current border-t-transparent animate-spin" />
               </span>
-              <Play v-else-if="props.rows[virtualRow.index].audioState === 'done' && !props.rows[virtualRow.index].isPlaying" class="w-3 h-3 fill-current ml-0.5" />
-              <Pause v-else-if="props.rows[virtualRow.index].audioState === 'done' && props.rows[virtualRow.index].isPlaying" class="w-3 h-3 fill-current" />
-              <Play v-else class="w-3 h-3 fill-current ml-0.5" :class="props.rows[virtualRow.index].audioState === 'none' ? 'opacity-30' : ''" />
+              <Play v-else-if="props.rows[virtualRow.index].audioState === 'done' && !props.rows[virtualRow.index].isPlaying" class="block w-3 h-3 fill-current shrink-0" />
+              <Pause v-else-if="props.rows[virtualRow.index].audioState === 'done' && props.rows[virtualRow.index].isPlaying" class="block w-3 h-3 fill-current shrink-0" />
+              <Play v-else class="block w-3 h-3 fill-current shrink-0" :class="props.rows[virtualRow.index].audioState === 'none' ? 'opacity-30' : ''" />
             </button>
             <div class="flex-1 relative h-6 min-w-0">
               <BatchWaveform
