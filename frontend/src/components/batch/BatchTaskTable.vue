@@ -42,12 +42,21 @@ const emit = defineEmits<{
 }>()
 
 const scrollBodyRef = ref<HTMLElement | null>(null)
+let savedScrollOffset = 0
 const virtualizer = useVirtualizer({
   get count() { return props.rows.length },
   getScrollElement: () => scrollBodyRef.value,
   estimateSize: () => 44,
   overscan: 10,
 })
+
+function trackScrollOffset(event: Event) {
+  const el = event.target as HTMLElement
+  // KeepAlive detaches this page on deactivate; the browser may silently
+  // reset scrollTop while the element is detached, so only record scroll
+  // positions observed while the element is still in the document.
+  if (el.isConnected) savedScrollOffset = el.scrollTop
+}
 
 function measureRow(element: unknown) {
   if (element instanceof Element) virtualizer.value.measureElement(element)
@@ -63,7 +72,10 @@ function scrollToEnd() {
 
 onActivated(async () => {
   await nextTick()
-  virtualizer.value.measure()
+  // KeepAlive detaches the scroll container while inactive and the browser
+  // drops its scroll position on re-insertion. Restoring the last real
+  // offset re-renders the previously visible rows instead of the first page.
+  virtualizer.value.scrollToOffset(savedScrollOffset, { align: "start" })
 })
 
 defineExpose({ scrollToStart, scrollToEnd })
@@ -88,7 +100,7 @@ defineExpose({ scrollToStart, scrollToEnd })
       <div class="px-2 py-2 text-center truncate min-w-0">{{ $t('views.batch.columns.details') }}</div>
     </div>
 
-    <div v-if="props.rows.length > 0" ref="scrollBodyRef" class="flex-1 overflow-y-auto" @contextmenu="emit('contextMenu', $event)">
+    <div v-if="props.rows.length > 0" ref="scrollBodyRef" class="flex-1 overflow-y-auto" @scroll.passive="trackScrollOffset" @contextmenu="emit('contextMenu', $event)">
       <div :style="{ height: virtualizer.getTotalSize() + 'px', width: '100%', position: 'relative' }">
         <div
           v-for="virtualRow in virtualizer.getVirtualItems()"
