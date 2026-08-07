@@ -34,24 +34,24 @@ function onGenerateClick() {
 
 <template>
   <div class="border rounded-xl bg-card p-3 flex flex-col gap-[11px] overflow-y-auto min-h-0">
-    <div class="grid grid-cols-3 gap-[7px]">
-      <div class="space-y-1">
-        <label class="text-xs text-muted-foreground">{{ $t('components.batchGenerationControls.format') }}</label>
-        <AppSelect v-model="format" :options="formatOptions" @update:model-value="emit('update:format', format)" />
+    <div class="grid grid-cols-3 items-start gap-[7px]">
+      <div class="min-w-0 space-y-1">
+        <div class="flex h-4 items-center text-xs text-muted-foreground">{{ $t('components.batchGenerationControls.format') }}</div>
+        <AppSelect class="[&_button]:h-10" v-model="format" :options="formatOptions" @update:model-value="emit('update:format', format)" />
       </div>
-      <div class="space-y-1">
-        <label class="text-xs text-muted-foreground">{{ $t('components.batchGenerationControls.sampleRate') }}</label>
-        <AppSelect v-model="sampleRate" :options="sampleRateOptions" @update:model-value="emit('update:sampleRate', sampleRate)" />
+      <div class="min-w-0 space-y-1">
+        <div class="flex h-4 items-center text-xs text-muted-foreground">{{ $t('components.batchGenerationControls.sampleRate') }}</div>
+        <AppSelect class="[&_button]:h-10" v-model="sampleRate" :options="sampleRateOptions" @update:model-value="emit('update:sampleRate', sampleRate)" />
       </div>
-      <div class="space-y-1">
-        <label class="text-xs text-muted-foreground">{{ $t('components.batchGenerationControls.gainDb') }}</label>
+      <div class="min-w-0 space-y-1">
+        <div class="flex h-4 items-center text-xs text-muted-foreground">{{ $t('components.batchGenerationControls.gainDb') }}</div>
         <input
           v-model.number="gain"
           type="number"
           step="0.1"
           min="-10"
           max="10"
-          class="w-full px-2 py-1.5 text-sm rounded-lg bg-background border"
+          class="h-10 w-full px-3 py-2 text-sm rounded-lg bg-background border"
           @wheel.prevent="(e: WheelEvent) => { const d = e.deltaY > 0 ? -0.1 : 0.1; gain = Number((Math.max(-10, Math.min(10, gain + d))).toFixed(1)) }"
           @input="emit('update:gain', gain)"
         />

@@ -32,22 +32,28 @@ function onGainWheel(e: WheelEvent) {
 
 <template>
   <div class="card space-y-3">
-    <div class="grid grid-cols-3 gap-2">
-      <div class="space-y-1.5">
-        <div class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.format`) }}</div>
+    <div class="grid grid-cols-3 items-start gap-2">
+      <div class="min-w-0 space-y-1.5">
+        <div class="flex h-4 items-center text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.format`) }}</div>
         <AppSelect
+          class="[&_button]:h-10"
           :model-value="streamingEnabled ? 'pcm' : outputFormat"
           :options="formatOptions"
           :disabled="streamingEnabled"
           @update:model-value="$emit('update:outputFormat', $event)"
         />
       </div>
-      <div class="space-y-1.5">
-        <div class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.sampleRate`) }}</div>
-        <AppSelect :model-value="sampleRate" :options="sampleRateOptions" @update:model-value="$emit('update:sampleRate', $event)" />
+      <div class="min-w-0 space-y-1.5">
+        <div class="flex h-4 items-center text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.sampleRate`) }}</div>
+        <AppSelect
+          class="[&_button]:h-10"
+          :model-value="sampleRate"
+          :options="sampleRateOptions"
+          @update:model-value="$emit('update:sampleRate', $event)"
+        />
       </div>
-      <div class="space-y-1.5">
-        <label for="synthesis-output-gain" class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.gainDb`) }}</label>
+      <div class="min-w-0 space-y-1.5">
+        <label for="synthesis-output-gain" class="flex h-4 items-center text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.gainDb`) }}</label>
         <input
           id="synthesis-output-gain"
           name="synthesis_output_gain"
@@ -56,7 +62,7 @@ function onGainWheel(e: WheelEvent) {
           min="-10"
           max="10"
           :value="gain"
-          class="w-full px-2 py-1.5 text-sm"
+          class="h-10 w-full px-3 py-2 text-sm"
           @wheel.prevent="onGainWheel"
           @input="$emit('update:gain', parseFloat(($event.target as HTMLInputElement).value) || 0)"
         />
