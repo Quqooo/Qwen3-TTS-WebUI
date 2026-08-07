@@ -608,26 +608,31 @@ function drawOnCanvas(
   const ctx = canvas.getContext("2d")
   if (!ctx) return
   const dpr = window.devicePixelRatio || 1
-  canvas.width = Math.round(w * dpr)
-  canvas.height = Math.round(h * dpr)
-  ctx.scale(dpr, dpr)
-  ctx.clearRect(0, 0, w, h)
+  const pixelWidth = Math.round(w * dpr)
+  const pixelHeight = Math.round(h * dpr)
+  canvas.width = pixelWidth
+  canvas.height = pixelHeight
+  ctx.clearRect(0, 0, pixelWidth, pixelHeight)
+
   const numBars = pks.length
-  const barWidth = 3
-  const barSpacing = 4
-  const scaleX = w / (numBars * barSpacing)
+  const gap = Math.max(1, Math.round(dpr))
+  const maxBarHeight = Math.round(pixelHeight * 0.9)
+  const radius = Math.max(1, Math.round(dpr))
+  const c = ctx as CanvasRenderingContext2D & { roundRect?: (x: number, y: number, w: number, h: number, r: number) => void }
   ctx.fillStyle = color
+
   for (let i = 0; i < numBars; i++) {
-    const x = i * barSpacing * scaleX
-    const barHeight = Math.max(1, pks[i] * (h * 0.9))
-    const y = (h - barHeight) / 2
-    const bw = Math.max(1, barWidth * scaleX)
-    const c = ctx as CanvasRenderingContext2D & { roundRect?: (x: number, y: number, w: number, h: number, r: number) => void }
+    const cellStart = Math.round((i * pixelWidth) / numBars)
+    const cellEnd = Math.round(((i + 1) * pixelWidth) / numBars)
+    const barWidth = Math.max(1, cellEnd - cellStart - gap)
+    const barHeight = Math.max(1, Math.round(pks[i] * maxBarHeight))
+    const y = Math.round((pixelHeight - barHeight) / 2)
+
     c.beginPath()
     if (c.roundRect) {
-      c.roundRect(x, y, bw, barHeight, 1)
+      c.roundRect(cellStart, y, barWidth, barHeight, radius)
     } else {
-      c.rect(x, y, bw, barHeight)
+      c.rect(cellStart, y, barWidth, barHeight)
     }
     c.fill()
   }
