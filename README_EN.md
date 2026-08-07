@@ -112,7 +112,15 @@ Edit `backend/settings.json`:
   "env_dir": "",
   "model_dir": "",
   "voice_dir": "",
-  "max_seq_len": 2048,
+  "andimarafioti": {
+    "max_seq_len": 2048,
+    "predictor_graph": {
+      "do_sample": true,
+      "top_k": 50,
+      "top_p": 1.0,
+      "temperature": 0.9
+    }
+  },
   "batch_composer": {
     "max_segments": 1000,
     "max_output_samples": 100000000,
@@ -138,8 +146,20 @@ Edit `backend/settings.json`:
 | `env_dir` | Python virtual environment path for Qwen3-TTS |
 | `model_dir` | Model weights directory |
 | `voice_dir` | Voice file storage directory |
-| `max_seq_len` | Static KV cache max sequence length (Faster branch only) |
+| `andimarafioti` | Branch-specific settings for `andimarafioti/faster-qwen3-tts` (see sub-fields below) |
 | `batch_composer` | Batch audio composition limits (see sub-fields below) |
+
+`andimarafioti` sub-fields:
+
+| Sub-Field | Default | Description |
+|-----------|---------|-------------|
+| `max_seq_len` | 2048 | Static KV cache maximum sequence length for the Faster branch, range 1-32767. Changing it stops existing Workers and takes effect on the next model load |
+| `predictor_graph.do_sample` | `true` | Whether the Codebook Predictor uses sampling; when disabled, greedy decoding is used |
+| `predictor_graph.top_k` | 50 | Codebook Predictor Top-K, range 0-32767; 0 disables the limit |
+| `predictor_graph.top_p` | 1.0 | Codebook Predictor Top-P, range (0, 1] |
+| `predictor_graph.temperature` | 0.9 | Codebook Predictor temperature, range (0, 10] |
+
+The four `predictor_graph` fields are CUDA Graph capture-time parameters. Saving changes does not immediately stop the Worker. Before the next Faster inference request, PredictorGraph is recaptured with the new values; subsequent requests with unchanged settings do not recapture it again.
 
 `batch_composer` sub-fields:
 

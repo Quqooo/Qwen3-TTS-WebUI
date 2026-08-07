@@ -12,6 +12,18 @@ export interface BatchComposerSettings {
   max_sample_rate: number
 }
 
+export interface PredictorGraphSettings {
+  do_sample: boolean
+  top_k: number
+  top_p: number
+  temperature: number
+}
+
+export interface AndimarafiotiSettings {
+  max_seq_len: number
+  predictor_graph: PredictorGraphSettings
+}
+
 export interface ServerSettings {
   gpu_devices: string
   max_concurrent_models: number
@@ -23,7 +35,7 @@ export interface ServerSettings {
   env_dir: string
   model_dir: string
   voice_dir: string
-  max_seq_len: number
+  andimarafioti: AndimarafiotiSettings
   batch_composer: BatchComposerSettings
 }
 

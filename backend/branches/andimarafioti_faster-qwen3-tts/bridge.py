@@ -30,10 +30,20 @@ class FasterBranch(PooledWorkerBranch):
         super().__init__(_PROVIDER_FILE, _logger)
 
     def _load_provider_options(self) -> Dict[str, Any]:
+        config = settings.andimarafioti
+        max_seq_len = int(config["max_seq_len"])
         return {
             "backend": "torch",
-            "max_seq_len": settings.max_seq_len,
-            "warmup_prefill_len": min(100, settings.max_seq_len - 1),
+            "max_seq_len": max_seq_len,
+            "warmup_prefill_len": min(100, max_seq_len - 1),
+            "predictor_graph": dict(config["predictor_graph"]),
+        }
+
+    def _generation_runtime_params(self) -> Dict[str, Any]:
+        return {
+            "provider_runtime": {
+                "predictor_graph": dict(settings.andimarafioti["predictor_graph"]),
+            },
         }
 
     def _stream_params(

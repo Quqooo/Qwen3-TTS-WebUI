@@ -62,6 +62,13 @@ class WorkerProvider(ABC):
     def release_model(self, model: Any) -> None:
         del model
 
+    def model_requires_prepare(self, model: Any, request: Dict[str, Any]) -> bool:
+        """Return whether this request requires an exclusive model preparation step."""
+        return False
+
+    def prepare_model(self, model: Any, request: Dict[str, Any]) -> None:
+        """Prepare a model before inference while the worker holds its GPU write lock."""
+
     @abstractmethod
     def get_supported_options(self, model: Any) -> Dict[str, Any]:
         raise NotImplementedError

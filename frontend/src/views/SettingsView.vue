@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onActivated } from "vue"
 import { Save, FolderOpen, Volume2, ExternalLink, XCircle, RefreshCw, Server, SlidersHorizontal, User, Shield, Settings2, Gauge } from "@lucide/vue"
 import type { ModelKind, GenerationParamsConfig as GenParams } from "../types"
-import type { BatchComposerSettings } from "../api/settings"
+import type { BatchComposerSettings, PredictorGraphSettings } from "../api/settings"
 import { settingsApi } from "../api/settings"
 import { modelsApi } from "../api/models"
 import { api } from "../api/client"
@@ -28,7 +28,15 @@ interface SettingsData {
   modelDir: string
   voiceDir: string
   maxSeqLen: number
+  predictorGraph: PredictorGraphSettings
   batchComposer: BatchComposerSettings
+}
+
+const DEFAULT_PREDICTOR_GRAPH: PredictorGraphSettings = {
+  do_sample: true,
+  top_k: 50,
+  top_p: 1.0,
+  temperature: 0.9,
 }
 
 const DEFAULT_BATCH: BatchComposerSettings = {
@@ -64,6 +72,7 @@ const envDir = ref("")
 const modelDir = ref("")
 const voiceDir = ref("")
 const maxSeqLen = ref(2048)
+const predictorGraph = ref<PredictorGraphSettings>({ ...DEFAULT_PREDICTOR_GRAPH })
 const batchComposer = ref<BatchComposerSettings>({ ...DEFAULT_BATCH })
 const selectedKind = ref<ModelKind>("base")
 
@@ -103,6 +112,7 @@ function applySettings(data: SettingsData) {
   modelDir.value = data.modelDir
   voiceDir.value = data.voiceDir
   maxSeqLen.value = data.maxSeqLen
+  predictorGraph.value = { ...DEFAULT_PREDICTOR_GRAPH, ...data.predictorGraph }
   batchComposer.value = { ...DEFAULT_BATCH, ...data.batchComposer }
 }
 
@@ -185,7 +195,10 @@ async function saveSettings() {
       env_dir: envDir.value,
       model_dir: modelDir.value,
       voice_dir: voiceDir.value,
-      max_seq_len: maxSeqLen.value,
+      andimarafioti: {
+        max_seq_len: maxSeqLen.value,
+        predictor_graph: { ...predictorGraph.value },
+      },
       batch_composer: { ...batchComposer.value },
     })
     modelStore.setBackendBranch(res.backend_branch)
@@ -211,7 +224,8 @@ function fromResponse(data: Awaited<ReturnType<typeof settingsApi.get>>): Settin
     envDir: data.env_dir,
     modelDir: data.model_dir,
     voiceDir: data.voice_dir,
-    maxSeqLen: data.max_seq_len ?? 2048,
+    maxSeqLen: data.andimarafioti?.max_seq_len ?? 2048,
+    predictorGraph: { ...DEFAULT_PREDICTOR_GRAPH, ...data.andimarafioti?.predictor_graph },
     batchComposer: { ...DEFAULT_BATCH, ...data.batch_composer },
   }
 }
@@ -255,6 +269,7 @@ function settingsSnapshot(): SettingsData {
     modelDir: modelDir.value,
     voiceDir: voiceDir.value,
     maxSeqLen: maxSeqLen.value,
+    predictorGraph: { ...predictorGraph.value },
     batchComposer: { ...batchComposer.value },
   }
 }
@@ -363,7 +378,7 @@ onActivated(() => {
                       </colgroup>
                       <thead>
                         <tr class="text-muted-foreground">
-                          <th class="text-center font-medium py-1.5 px-2 border-b border-border">{{ $t("views.settings.colModel") }}</th>
+                          <th class="text-left font-medium py-1.5 px-2 border-b border-border">{{ $t("views.settings.colModel") }}</th>
                           <th class="text-center font-medium py-1.5 px-2 border-b border-border border-l border-l-border/25">{{ $t("views.settings.colTasks") }}</th>
                           <th class="text-center font-medium py-1.5 px-2 border-b border-border border-l border-l-border/25">{{ $t("views.settings.colGpu") }}</th>
                         </tr>
@@ -391,9 +406,22 @@ onActivated(() => {
                   <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.branch") }}</div><AppSelect v-model="backendBranch" :options="branchSelectOptions" /></div>
                   <div class="space-y-1.5"><label for="settings-project-dir" class="label-sm">{{ $t("views.settings.projectDir") }}</label><input id="settings-project-dir" name="project_dir" v-model="projectDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.projectDirPlaceholder')" /></div>
                   <div class="space-y-1.5"><label for="settings-env-dir" class="label-sm">{{ $t("views.settings.envDir") }}</label><input id="settings-env-dir" name="env_dir" v-model="envDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.envDirPlaceholder')" /></div>
-                  <div class="space-y-1.5"><label for="settings-model-dir" class="label-sm">{{ $t("views.settings.modelDir") }}</label><input id="settings-model-dir" name="model_dir" v-model="modelDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.modelDirPlaceholder')" /></div>
-                  <div class="space-y-1.5"><label for="settings-voice-dir" class="label-sm">{{ $t("views.settings.voiceDir") }}</label><input id="settings-voice-dir" name="voice_dir" v-model="voiceDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.voiceDirPlaceholder')" /></div>
-                  <div v-if="isFasterBranch" class="space-y-1.5"><label for="settings-max-seq-len" class="label-sm">{{ $t("views.settings.maxSeqLen") }}</label><input id="settings-max-seq-len" name="max_seq_len" v-model.number="maxSeqLen" type="number" min="1" max="32767" step="1" class="w-full px-3 py-2 text-sm" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.maxSeqLenHint") }}</p></div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                    <div class="space-y-1.5"><label for="settings-model-dir" class="label-sm">{{ $t("views.settings.modelDir") }}</label><input id="settings-model-dir" name="model_dir" v-model="modelDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.modelDirPlaceholder')" /></div>
+                    <div class="space-y-1.5"><label for="settings-voice-dir" class="label-sm">{{ $t("views.settings.voiceDir") }}</label><input id="settings-voice-dir" name="voice_dir" v-model="voiceDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.voiceDirPlaceholder')" /></div>
+                  </div>
+                  <template v-if="isFasterBranch">
+                    <div class="space-y-1.5"><label for="settings-max-seq-len" class="label-sm">{{ $t("views.settings.maxSeqLen") }}</label><input id="settings-max-seq-len" name="andimarafioti_max_seq_len" v-model.number="maxSeqLen" type="number" min="1" max="32767" step="1" class="w-full px-3 py-2 text-sm" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.maxSeqLenHint") }}</p></div>
+                    <div class="space-y-2 border-t pt-4">
+                      <div class="space-y-1"><h4 class="text-xs font-medium">{{ $t("views.settings.predictorGraph") }}</h4><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.predictorGraphHint") }}</p></div>
+                      <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+                        <div class="min-w-0 space-y-1.5"><div class="label-sm">{{ $t("views.settings.predictorDoSample") }}</div><AppSelect :model-value="String(predictorGraph.do_sample)" :options="samplingOptions" @update:model-value="predictorGraph.do_sample = $event === 'true'" /></div>
+                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-top-k" class="block label-sm">{{ $t("views.settings.predictorTopK") }}</label><input id="settings-predictor-top-k" name="andimarafioti_predictor_graph_top_k" v-model.number="predictorGraph.top_k" type="number" min="0" max="32767" step="1" class="w-full px-3 py-2 text-sm" /></div>
+                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-top-p" class="block label-sm">{{ $t("views.settings.predictorTopP") }}</label><input id="settings-predictor-top-p" name="andimarafioti_predictor_graph_top_p" v-model.number="predictorGraph.top_p" type="number" min="0.000001" max="1" step="any" class="w-full px-3 py-2 text-sm" /></div>
+                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-temperature" class="block label-sm">{{ $t("views.settings.predictorTemperature") }}</label><input id="settings-predictor-temperature" name="andimarafioti_predictor_graph_temperature" v-model.number="predictorGraph.temperature" type="number" min="0.000001" max="10" step="any" class="w-full px-3 py-2 text-sm" /></div>
+                      </div>
+                    </div>
+                  </template>
                 </div>
               </section>
             </div>

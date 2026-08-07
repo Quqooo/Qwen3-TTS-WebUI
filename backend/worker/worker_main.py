@@ -192,12 +192,29 @@ class WorkerServer:
             async with self._lifecycle_lock:
                 return await self._unload_locked(model_path, reason)
 
-    async def _with_model(self, model_path: str, function: Any) -> Dict[str, Any]:
-        async with self.state.operation_lock(model_path):
-            model = self.state.model(model_path)
-            if model is None:
-                return {"ok": False, "error": f"Model not loaded: {model_path}"}
-            return await function(model)
+    async def _with_prepared_model(
+        self, model_path: str, data: Dict[str, Any], function: Any
+    ) -> Dict[str, Any]:
+        model = self.state.models.get(model_path)
+        requires_prepare = (
+            model is not None
+            and self.state.provider.model_requires_prepare(model, data)
+        )
+        lock = self._gpu_lock.write if requires_prepare else self._gpu_lock.read
+
+        # Preparation may capture CUDA graphs, so a request that changes the
+        # graph holds the GPU write lock through its inference. This prevents a
+        # later request from replacing the graph between capture and replay.
+        async with lock():
+            async with self.state.operation_lock(model_path):
+                model = self.state.model(model_path)
+                if model is None:
+                    return {"ok": False, "error": f"Model not loaded: {model_path}"}
+                if self.state.provider.model_requires_prepare(model, data):
+                    await self._in_model_thread(
+                        model_path, self.state.provider.prepare_model, model, data
+                    )
+                return await function(model)
 
     async def command(self, data: Dict[str, Any]) -> Dict[str, Any]:
         cmd = data.get("cmd", "")
@@ -269,9 +286,7 @@ class WorkerServer:
             result = await self._in_model_thread(model_path, generate)
             return make_audio_result(result)
 
-        # 共享读：推理/预览/选项查询可跨模型并行，但须避开加载/卸载的捕获窗口
-        async with self._gpu_lock.read():
-            return await self._with_model(model_path, execute)
+        return await self._with_prepared_model(model_path, data, execute)
 
     async def _load_model(self, data: Dict[str, Any]) -> Dict[str, Any]:
         path = data["model_path"]
@@ -379,14 +394,24 @@ class WorkerServer:
         capability, method = mapping[command]
         self._require_capability(capability)
         path = data["model_path"]
-        # 共享读（整个流式会话期间持有）：加载/卸载的捕获窗口须等待流结束；
-        # 锁序 gpu_lock → operation_lock，与其他路径保持一致
-        async with self._gpu_lock.read():
+        model = self.state.models.get(path)
+        requires_prepare = (
+            model is not None
+            and self.state.provider.model_requires_prepare(model, data)
+        )
+        lock = self._gpu_lock.write if requires_prepare else self._gpu_lock.read
+        # 整个流式会话持有同一 GPU 锁；若本请求触发重捕获，则写锁持续到
+        # 流结束，避免其他请求在首次 replay 前替换 PredictorGraph。
+        async with lock():
             async with self.state.operation_lock(path):
                 model = self.state.model(path)
                 if model is None:
                     await send_json(writer, {"ok": False, "error": f"Model not loaded: {path}"})
                     return
+                if self.state.provider.model_requires_prepare(model, data):
+                    await self._in_model_thread(
+                        path, self.state.provider.prepare_model, model, data
+                    )
 
                 def create_generator() -> Any:
                     return method(model, self._request(data))

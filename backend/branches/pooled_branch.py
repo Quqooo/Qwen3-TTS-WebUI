@@ -43,6 +43,10 @@ class PooledWorkerBranch(TTSBranch):
         """加载模型时的 provider_options，由各分支覆盖"""
         return {}
 
+    def _generation_runtime_params(self) -> Dict[str, Any]:
+        """Return provider-internal settings attached to every generation request."""
+        return {}
+
     def _stream_params(
         self,
         dffdeeq: Optional[Dict[str, Any]] = None,
@@ -176,6 +180,7 @@ class PooledWorkerBranch(TTSBranch):
             "cmd": cmd_name, "model_path": model_path,
             "text": text, "language": language,
             "generation_params": generation_params or {},
+            **self._generation_runtime_params(),
         }
         if instruct:
             cmd["instruct"] = instruct
@@ -224,6 +229,7 @@ class PooledWorkerBranch(TTSBranch):
                 "cmd": "generate_custom_voice", "model_path": model_path,
                 "text": text, "speaker": speaker, "language": language,
                 "instruct": instruct, "generation_params": generation_params or {},
+                **self._generation_runtime_params(),
             })
         return self._decode_audio_response(resp)
 
@@ -237,6 +243,7 @@ class PooledWorkerBranch(TTSBranch):
                 "cmd": "generate_voice_design", "model_path": model_path,
                 "text": text, "instruct": instruct, "language": language,
                 "generation_params": generation_params or {},
+                **self._generation_runtime_params(),
             })
         return self._decode_audio_response(resp)
 
@@ -294,6 +301,7 @@ class PooledWorkerBranch(TTSBranch):
                                     x_vector_only, voice_file, generation_params,
                                     "stream_generate_voice_clone", instruct)
         cmd.update(self._stream_params(dffdeeq, andimarafioti))
+        cmd.update(self._generation_runtime_params())
         async for item in self._stream(cmd, model_path, lease=lease):
             yield item
 
@@ -311,6 +319,7 @@ class PooledWorkerBranch(TTSBranch):
             "text": text, "speaker": speaker, "language": language,
             "instruct": instruct or "",
             **self._stream_params(dffdeeq, andimarafioti),
+            **self._generation_runtime_params(),
             "generation_params": generation_params or {},
         }
         async for item in self._stream(cmd, model_path, lease=lease):
@@ -329,6 +338,7 @@ class PooledWorkerBranch(TTSBranch):
             "cmd": "stream_generate_voice_design", "model_path": model_path,
             "text": text, "instruct": instruct, "language": language,
             **self._stream_params(dffdeeq, andimarafioti),
+            **self._generation_runtime_params(),
             "generation_params": generation_params or {},
         }
         async for item in self._stream(cmd, model_path, lease=lease):

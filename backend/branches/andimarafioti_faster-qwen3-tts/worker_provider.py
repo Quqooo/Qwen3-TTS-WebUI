@@ -11,6 +11,12 @@ _GENERATION_OPTIONS = {
     "max_new_tokens", "min_new_tokens", "temperature", "top_k", "top_p",
     "do_sample", "repetition_penalty", "non_streaming_mode",
 }
+_PREDICTOR_GRAPH_DEFAULTS = {
+    "do_sample": True,
+    "top_k": 50,
+    "top_p": 1.0,
+    "temperature": 0.9,
+}
 
 
 def _filtered(values: Dict[str, Any], allowed: set) -> Dict[str, Any]:
@@ -21,6 +27,10 @@ def _audio_result(result: Any):
     import numpy as np
     wavs, sample_rate = result
     return [np.asarray(wav, dtype=np.float32) for wav in wavs], int(sample_rate)
+
+
+def _predictor_graph_options(values: Dict[str, Any] | None) -> Dict[str, Any]:
+    return {**_PREDICTOR_GRAPH_DEFAULTS, **(values or {})}
 
 
 class FasterQwenProvider(WorkerProvider):
@@ -42,8 +52,32 @@ class FasterQwenProvider(WorkerProvider):
         kwargs.update(_filtered(provider_options, {"max_seq_len"}))
         kwargs.update(_filtered(load_options, _LOAD_OPTIONS))
         model = FasterQwen3TTS.from_pretrained(model_path, **kwargs)
+        predictor_options = _predictor_graph_options(provider_options.get("predictor_graph"))
+        self._configure_predictor_graph(model, predictor_options)
         model.warmup(prefill_len=int(provider_options.get("warmup_prefill_len", 100)))
+        model._webui_predictor_graph_options = predictor_options
         return model
+
+    @staticmethod
+    def _configure_predictor_graph(model: Any, options: Dict[str, Any]) -> None:
+        graph = model.predictor_graph
+        for key, value in options.items():
+            setattr(graph, key, value)
+
+    def model_requires_prepare(self, model: Any, request: Dict[str, Any]) -> bool:
+        runtime = request.get("provider_runtime") or {}
+        if "predictor_graph" not in runtime:
+            return False
+        requested = _predictor_graph_options(runtime["predictor_graph"])
+        return requested != getattr(model, "_webui_predictor_graph_options", None)
+
+    def prepare_model(self, model: Any, request: Dict[str, Any]) -> None:
+        requested = _predictor_graph_options(
+            (request.get("provider_runtime") or {}).get("predictor_graph")
+        )
+        self._configure_predictor_graph(model, requested)
+        model.predictor_graph.capture(num_warmup=3)
+        model._webui_predictor_graph_options = requested
 
     def get_supported_options(self, model: Any) -> Dict[str, Any]:
         def label(value: str) -> str:

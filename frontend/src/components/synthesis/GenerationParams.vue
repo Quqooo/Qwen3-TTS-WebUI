@@ -151,7 +151,7 @@ function triStateValue(value: boolean | undefined): string {
                 />
               </div>
             </div>
-            <section class="border-t pt-3 grid grid-cols-3 gap-3">
+            <section class="grid grid-cols-3 gap-3">
               <div class="space-y-1.5">
                 <label for="generation-top-k" class="flex h-4 items-center text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topKTooltip')">{{ $t('components.generationParams.topK') }}</label>
                 <input id="generation-top-k" name="generation_top_k" type="number" min="0" max="32767" step="1" :value="valueOf('top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />

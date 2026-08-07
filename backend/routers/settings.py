@@ -100,6 +100,20 @@ class BatchComposerSettings(BaseModel):
         return self
 
 
+class PredictorGraphSettings(BaseModel):
+    """Faster Codebook Predictor CUDA Graph 的捕获期采样参数。"""
+    do_sample: bool | None = None
+    top_k: StrictInt | None = Field(None, ge=0, le=32767)
+    top_p: float | None = Field(None, gt=0.0, le=1.0)
+    temperature: float | None = Field(None, gt=0.0, le=10.0)
+
+
+class AndimarafiotiSettings(BaseModel):
+    """andimarafioti/faster-qwen3-tts 分支专属配置。"""
+    max_seq_len: StrictInt | None = Field(None, ge=_MIN_MAX_SEQ_LEN, le=_MAX_MAX_SEQ_LEN)
+    predictor_graph: PredictorGraphSettings | None = None
+
+
 class SettingsUpdate(BaseModel):
     """设置更新请求体"""
     gpu_devices: str | None = None
@@ -111,7 +125,7 @@ class SettingsUpdate(BaseModel):
     env_dir: str | None = None
     model_dir: str | None = None
     voice_dir: str | None = None
-    max_seq_len: StrictInt | None = Field(None, ge=_MIN_MAX_SEQ_LEN, le=_MAX_MAX_SEQ_LEN)
+    andimarafioti: AndimarafiotiSettings | None = None
     batch_composer: BatchComposerSettings | None = None
 
 
@@ -154,7 +168,11 @@ async def update_settings(data: SettingsUpdate):
 
     branch_changed = data.backend_branch is not None and data.backend_branch != old_branch
     project_changed = data.project_dir is not None and data.project_dir != old_project_dir
-    max_seq_len_changed = data.max_seq_len is not None and data.max_seq_len != old_max_seq_len
+    max_seq_len_changed = (
+        data.andimarafioti is not None
+        and data.andimarafioti.max_seq_len is not None
+        and data.andimarafioti.max_seq_len != old_max_seq_len
+    )
     max_concurrent_changed = (
         data.max_concurrent_models is not None and data.max_concurrent_models != old_max_concurrent
     )

@@ -112,7 +112,15 @@ pnpm build
   "env_dir": "",
   "model_dir": "",
   "voice_dir": "",
-  "max_seq_len": 2048,
+  "andimarafioti": {
+    "max_seq_len": 2048,
+    "predictor_graph": {
+      "do_sample": true,
+      "top_k": 50,
+      "top_p": 1.0,
+      "temperature": 0.9
+    }
+  },
   "batch_composer": {
     "max_segments": 1000,
     "max_output_samples": 100000000,
@@ -138,8 +146,20 @@ pnpm build
 | `env_dir` | Qwen3-TTS 的 Python 虚拟环境路径 |
 | `model_dir` | 模型权重目录 |
 | `voice_dir` | 音色文件存储目录 |
-| `max_seq_len` | Faster 分支静态 KV Cache 最大序列长度 |
+| `andimarafioti` | `andimarafioti/faster-qwen3-tts` 分支专属配置（见下方子字段） |
 | `batch_composer` | 批量音频合成限制（见下方子字段） |
+
+`andimarafioti` 子字段：
+
+| 子字段 | 默认值 | 说明 |
+|--------|--------|------|
+| `max_seq_len` | 2048 | Faster 分支静态 KV Cache 最大序列长度，范围 1～32767；修改后会停止现有 Worker，下次加载模型时生效 |
+| `predictor_graph.do_sample` | `true` | Codebook Predictor 是否使用随机采样；关闭时使用贪心解码 |
+| `predictor_graph.top_k` | 50 | Codebook Predictor Top-K，范围 0～32767；0 表示不限制 |
+| `predictor_graph.top_p` | 1.0 | Codebook Predictor Top-P，范围 (0, 1] |
+| `predictor_graph.temperature` | 0.9 | Codebook Predictor 温度，范围 (0, 10] |
+
+`predictor_graph` 四项为 CUDA Graph 捕获期参数。修改后不会立即停止 Worker；下一次 Faster 推理请求会在开始推理前使用新参数重新捕获 PredictorGraph，相同配置的后续请求不会重复捕获。
 
 `batch_composer` 子字段：
 

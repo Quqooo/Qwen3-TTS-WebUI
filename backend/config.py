@@ -63,7 +63,17 @@ class AppSettings:
         self.env_dir: str = ""          # Python 环境目录（可选，留空则自动搜索）
         self.model_dir: str = ""        # 模型存放目录（可选，留空则使用 project_dir/models）
         self.voice_dir: str = ""        # 音色文件目录（可选，留空则使用 project_dir/voice）
-        self.max_seq_len: int = 2048     # Faster 分支静态 KV Cache 最大序列长度
+
+        # andimarafioti/faster-qwen3-tts 分支专属配置
+        self.andimarafioti: dict = {
+            "max_seq_len": 2048,
+            "predictor_graph": {
+                "do_sample": True,
+                "top_k": 50,
+                "top_p": 1.0,
+                "temperature": 0.9,
+            },
+        }
 
         # 批量合成限制
         self.batch_composer: dict = {
@@ -83,6 +93,11 @@ class AppSettings:
         """QwenTTS 是否已配置"""
         return bool(self.project_dir)
 
+    @property
+    def max_seq_len(self) -> int:
+        """兼容旧调用点的 Faster 静态 KV Cache 长度。"""
+        return int(self.andimarafioti["max_seq_len"])
+
     def gpu_list(self) -> List[str]:
         """按优先级排序的可用 GPU 设备 ID 列表"""
         return parse_gpu_devices(self.gpu_devices)
@@ -99,7 +114,7 @@ class AppSettings:
             "env_dir": self.env_dir,
             "model_dir": self.model_dir,
             "voice_dir": self.voice_dir,
-            "max_seq_len": self.max_seq_len,
+            "andimarafioti": self.andimarafioti,
             "batch_composer": self.batch_composer,
         }
 
@@ -115,10 +130,24 @@ class AppSettings:
             "env_dir",
             "model_dir",
             "voice_dir",
-            "max_seq_len",
         ):
             if key in data:
                 setattr(self, key, data[key])
+
+        andimarafioti = data.get("andimarafioti")
+        if isinstance(andimarafioti, dict):
+            predictor_graph = andimarafioti.get("predictor_graph")
+            merged = {**self.andimarafioti, **andimarafioti}
+            if isinstance(predictor_graph, dict):
+                merged["predictor_graph"] = {
+                    **self.andimarafioti["predictor_graph"],
+                    **predictor_graph,
+                }
+            self.andimarafioti = merged
+        elif "max_seq_len" in data:
+            # 兼容旧版 settings.json；下次保存时自动迁移到嵌套结构。
+            self.andimarafioti["max_seq_len"] = data["max_seq_len"]
+
         if "batch_composer" in data and isinstance(data["batch_composer"], dict):
             self.batch_composer = {**self.batch_composer, **data["batch_composer"]}
 
