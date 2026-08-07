@@ -39,7 +39,8 @@ const {
 </script>
 
 <template>
-  <SynthesisWorkbench kind="voice_design">
+  <div class="h-full">
+    <SynthesisWorkbench kind="voice_design">
     <template #left>
       <div class="card space-y-3">
         <div class="space-y-1.5">
@@ -106,9 +107,9 @@ const {
 
       <StatusOutput :message="statusMessage" />
     </template>
-  </SynthesisWorkbench>
+    </SynthesisWorkbench>
 
-  <VoiceSaveDialog
+    <VoiceSaveDialog
     :open="showVoiceSaveDialog"
     :name="voiceSaveName"
     :model="voiceSaveModel"
@@ -120,7 +121,8 @@ const {
     @update:audio-url="voiceSaveAudioUrl = $event"
     @update:trim-start="voiceSaveTrimStart = $event"
     @update:trim-end="voiceSaveTrimEnd = $event"
-    @confirm="doSaveVoice(voiceSaveName, voiceSaveModel)"
-    @cancel="showVoiceSaveDialog = false"
-  />
+      @confirm="doSaveVoice(voiceSaveName, voiceSaveModel)"
+      @cancel="showVoiceSaveDialog = false"
+    />
+  </div>
 </template>

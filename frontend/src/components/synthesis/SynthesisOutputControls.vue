@@ -34,7 +34,7 @@ function onGainWheel(e: WheelEvent) {
   <div class="card space-y-3">
     <div class="grid grid-cols-3 gap-2">
       <div class="space-y-1.5">
-        <label class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.format`) }}</label>
+        <div class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.format`) }}</div>
         <AppSelect
           :model-value="streamingEnabled ? 'pcm' : outputFormat"
           :options="formatOptions"
@@ -43,12 +43,14 @@ function onGainWheel(e: WheelEvent) {
         />
       </div>
       <div class="space-y-1.5">
-        <label class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.sampleRate`) }}</label>
+        <div class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.sampleRate`) }}</div>
         <AppSelect :model-value="sampleRate" :options="sampleRateOptions" @update:model-value="$emit('update:sampleRate', $event)" />
       </div>
       <div class="space-y-1.5">
-        <label class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.gainDb`) }}</label>
+        <label for="synthesis-output-gain" class="text-xs text-muted-foreground">{{ $t(`${i18nPrefix}.gainDb`) }}</label>
         <input
+          id="synthesis-output-gain"
+          name="synthesis_output_gain"
           type="number"
           step="0.1"
           min="-10"

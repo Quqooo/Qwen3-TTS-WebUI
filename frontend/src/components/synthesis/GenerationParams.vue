@@ -129,7 +129,7 @@ function triStateValue(value: boolean | undefined): string {
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.doSampleTooltip')">{{ $t('components.generationParams.doSample') }}</label>
+                <div class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.doSampleTooltip')">{{ $t('components.generationParams.doSample') }}</div>
                 <AppSelect
                   compact
                   :model-value="samplingValue(modelValue.do_sample)"
@@ -139,8 +139,9 @@ function triStateValue(value: boolean | undefined): string {
                 />
               </div>
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.repPenaltyTooltip')">{{ $t('components.generationParams.repPenalty') }}</label>
+                <label for="generation-repetition-penalty" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.repPenaltyTooltip')">{{ $t('components.generationParams.repPenalty') }}</label>
                 <input
+                  id="generation-repetition-penalty" name="generation_repetition_penalty"
                   type="number" min="0.01" max="10" step="0.01"
                   :value="valueOf('repetition_penalty')" placeholder="1.05"
                   :disabled="!customParamsEnabled"
@@ -151,16 +152,16 @@ function triStateValue(value: boolean | undefined): string {
             </div>
             <section class="border-t pt-3 grid grid-cols-3 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topKTooltip')">{{ $t('components.generationParams.topK') }}</label>
-                <input type="number" min="0" max="32767" step="1" :value="valueOf('top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />
+                <label for="generation-top-k" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topKTooltip')">{{ $t('components.generationParams.topK') }}</label>
+                <input id="generation-top-k" name="generation_top_k" type="number" min="0" max="32767" step="1" :value="valueOf('top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />
               </div>
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topPTooltip')">{{ $t('components.generationParams.topP') }}</label>
-                <input type="number" min="0.01" max="1" step="0.01" :value="valueOf('top_p')" placeholder="1.0" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('top_p', ($event.target as HTMLInputElement).value, 0.01, 1)" />
+                <label for="generation-top-p" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topPTooltip')">{{ $t('components.generationParams.topP') }}</label>
+                <input id="generation-top-p" name="generation_top_p" type="number" min="0.01" max="1" step="0.01" :value="valueOf('top_p')" placeholder="1.0" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('top_p', ($event.target as HTMLInputElement).value, 0.01, 1)" />
               </div>
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.temperatureTooltip')">{{ $t('components.generationParams.temperature') }}</label>
-                <input type="number" min="0.1" max="10" step="0.1" :value="valueOf('temperature')" placeholder="0.9" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('temperature', ($event.target as HTMLInputElement).value, 0.1, 10)" />
+                <label for="generation-temperature" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.temperatureTooltip')">{{ $t('components.generationParams.temperature') }}</label>
+                <input id="generation-temperature" name="generation_temperature" type="number" min="0.1" max="10" step="0.1" :value="valueOf('temperature')" placeholder="0.9" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('temperature', ($event.target as HTMLInputElement).value, 0.1, 10)" />
               </div>
             </section>
           </section>
@@ -172,22 +173,22 @@ function triStateValue(value: boolean | undefined): string {
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.doSampleTooltip')">{{ $t('components.generationParams.doSample') }}</label>
+                <div class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.doSampleTooltip')">{{ $t('components.generationParams.doSample') }}</div>
                 <AppSelect compact :model-value="samplingValue(modelValue.subtalker_dosample)" :options="samplingOptions" :disabled="!customParamsEnabled" @update:model-value="setSampling('subtalker_dosample', $event)" />
               </div>
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topKTooltip')">{{ $t('components.generationParams.topK') }}</label>
-                <input type="number" min="0" max="32767" step="1" :value="valueOf('subtalker_top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.subtalker_dosample === false" class="param-input" @change="setNumber('subtalker_top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />
+                <label for="generation-subtalker-top-k" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topKTooltip')">{{ $t('components.generationParams.topK') }}</label>
+                <input id="generation-subtalker-top-k" name="generation_subtalker_top_k" type="number" min="0" max="32767" step="1" :value="valueOf('subtalker_top_k')" placeholder="50" :disabled="!customParamsEnabled || modelValue.subtalker_dosample === false" class="param-input" @change="setNumber('subtalker_top_k', ($event.target as HTMLInputElement).value, 0, 32767, true)" />
               </div>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topPTooltip')">{{ $t('components.generationParams.topP') }}</label>
-                <input type="number" min="0.01" max="1" step="0.01" :value="valueOf('subtalker_top_p')" placeholder="1.0" :disabled="!customParamsEnabled || modelValue.subtalker_dosample === false" class="param-input" @change="setNumber('subtalker_top_p', ($event.target as HTMLInputElement).value, 0.01, 1)" />
+                <label for="generation-subtalker-top-p" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.topPTooltip')">{{ $t('components.generationParams.topP') }}</label>
+                <input id="generation-subtalker-top-p" name="generation_subtalker_top_p" type="number" min="0.01" max="1" step="0.01" :value="valueOf('subtalker_top_p')" placeholder="1.0" :disabled="!customParamsEnabled || modelValue.subtalker_dosample === false" class="param-input" @change="setNumber('subtalker_top_p', ($event.target as HTMLInputElement).value, 0.01, 1)" />
               </div>
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.temperatureTooltip')">{{ $t('components.generationParams.temperature') }}</label>
-                <input type="number" min="0.1" max="10" step="0.1" :value="valueOf('subtalker_temperature')" placeholder="0.9" :disabled="!customParamsEnabled || modelValue.subtalker_dosample === false" class="param-input" @change="setNumber('subtalker_temperature', ($event.target as HTMLInputElement).value, 0.1, 10)" />
+                <label for="generation-subtalker-temperature" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.temperatureTooltip')">{{ $t('components.generationParams.temperature') }}</label>
+                <input id="generation-subtalker-temperature" name="generation_subtalker_temperature" type="number" min="0.1" max="10" step="0.1" :value="valueOf('subtalker_temperature')" placeholder="0.9" :disabled="!customParamsEnabled || modelValue.subtalker_dosample === false" class="param-input" @change="setNumber('subtalker_temperature', ($event.target as HTMLInputElement).value, 0.1, 10)" />
               </div>
             </div>
           </section>
@@ -196,19 +197,19 @@ function triStateValue(value: boolean | undefined): string {
             <div class="text-xs font-medium text-muted-foreground">{{ $t('components.generationParams.lengthSection') }}</div>
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.minNewTokensTooltip')">{{ $t('components.generationParams.minNewTokens') }}</label>
-                <input type="number" min="1" max="32767" step="1" :value="valueOf('min_new_tokens')" :placeholder="$t('components.generationParams.notSet')" :disabled="!customParamsEnabled" class="param-input" @change="setNumber('min_new_tokens', ($event.target as HTMLInputElement).value, 1, 32767, true)" />
+                <label for="generation-min-new-tokens" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.minNewTokensTooltip')">{{ $t('components.generationParams.minNewTokens') }}</label>
+                <input id="generation-min-new-tokens" name="generation_min_new_tokens" type="number" min="1" max="32767" step="1" :value="valueOf('min_new_tokens')" :placeholder="$t('components.generationParams.notSet')" :disabled="!customParamsEnabled" class="param-input" @change="setNumber('min_new_tokens', ($event.target as HTMLInputElement).value, 1, 32767, true)" />
               </div>
               <div class="space-y-1.5">
-                <label class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.maxNewTokensTooltip')">{{ $t('components.generationParams.maxNewTokens') }}</label>
-                <input type="number" min="1" max="32767" step="1" :value="valueOf('max_new_tokens')" placeholder="2048" :disabled="!customParamsEnabled" class="param-input" @change="setNumber('max_new_tokens', ($event.target as HTMLInputElement).value, 1, 32767, true)" />
+                <label for="generation-max-new-tokens" class="text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.maxNewTokensTooltip')">{{ $t('components.generationParams.maxNewTokens') }}</label>
+                <input id="generation-max-new-tokens" name="generation_max_new_tokens" type="number" min="1" max="32767" step="1" :value="valueOf('max_new_tokens')" placeholder="2048" :disabled="!customParamsEnabled" class="param-input" @change="setNumber('max_new_tokens', ($event.target as HTMLInputElement).value, 1, 32767, true)" />
               </div>
             </div>
             <div class="flex items-center justify-between gap-3">
-              <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
                 {{ $t('components.generationParams.nonStreamingMode') }}
                 <CircleHelp class="w-3.5 h-3.5" v-tooltip="$t('components.generationParams.nonStreamingModeTooltip')" />
-              </label>
+              </div>
               <AppSelect compact :model-value="triStateValue(modelValue.non_streaming_mode)" :options="triStateOptions" :disabled="!customParamsEnabled" @update:model-value="setTriState" />
             </div>
           </section>

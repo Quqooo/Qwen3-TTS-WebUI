@@ -55,8 +55,10 @@ const segments = computed<Segment[]>(() => [
   >
     <template #split>
       <div class="space-y-1">
-        <label class="text-[10px] text-muted-foreground">{{ $t('components.splitStreamPanel.splitChars') }}</label>
+        <label for="split-stream-chars" class="text-[10px] text-muted-foreground">{{ $t('components.splitStreamPanel.splitChars') }}</label>
         <input
+          id="split-stream-chars"
+          name="split_stream_chars"
           type="text"
           :value="splitChars"
           class="w-full px-2 py-1.5 text-xs font-mono"
@@ -70,6 +72,9 @@ const segments = computed<Segment[]>(() => [
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
           <span class="text-muted-foreground">{{ $t('components.splitStreamPanel.chunk') }}</span>
           <input
+            id="split-stream-chunk-size"
+            name="split_stream_chunk_size"
+            aria-label="chunk size"
             type="text"
             inputmode="numeric"
             pattern="[0-9]*"
@@ -100,6 +105,9 @@ const segments = computed<Segment[]>(() => [
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
           <span class="text-muted-foreground">{{ $t('components.splitStreamPanel.emit') }}</span>
           <input
+            id="split-stream-emit-every"
+            name="split_stream_emit_every"
+            aria-label="emit every"
             type="text"
             inputmode="numeric"
             pattern="[0-9]*"
@@ -112,6 +120,9 @@ const segments = computed<Segment[]>(() => [
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
           <span class="text-muted-foreground">{{ $t('components.splitStreamPanel.window') }}</span>
           <input
+            id="split-stream-decode-window"
+            name="split_stream_decode_window"
+            aria-label="decode window"
             type="text"
             inputmode="numeric"
             pattern="[0-9]*"
@@ -124,6 +135,9 @@ const segments = computed<Segment[]>(() => [
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
           <span class="text-muted-foreground">{{ $t('components.splitStreamPanel.overlap') }}</span>
           <input
+            id="split-stream-overlap-samples"
+            name="split_stream_overlap_samples"
+            aria-label="overlap samples"
             type="text"
             inputmode="numeric"
             pattern="[0-9]*"
@@ -136,6 +150,9 @@ const segments = computed<Segment[]>(() => [
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
           <span class="text-muted-foreground">{{ $t('components.splitStreamPanel.maxFrames') }}</span>
           <input
+            id="split-stream-max-frames"
+            name="split_stream_max_frames"
+            aria-label="maximum frames"
             type="text"
             inputmode="numeric"
             pattern="[0-9]*"
