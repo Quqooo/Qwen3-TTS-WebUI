@@ -51,6 +51,18 @@ let initToken = 0
 const leftPct = computed(() => (duration.value ? (localStart.value / duration.value) * 100 : 0))
 const rightPct = computed(() => (duration.value ? (localEnd.value / duration.value) * 100 : 0))
 
+function syncDisplayedTime(time: number) {
+  const clamped = duration.value > 0
+    ? Math.max(0, Math.min(time, duration.value))
+    : Math.max(0, time)
+  // The label only displays whole seconds. Avoid invalidating the entire Vue
+  // subtree on every WaveSurfer animation frame while keeping trim-loop checks
+  // at the original frame rate.
+  if (Math.floor(clamped) !== Math.floor(currentTime.value)) {
+    currentTime.value = clamped
+  }
+}
+
 async function initWaveSurfer(url: string) {
   const token = ++initToken
   destroyWaveSurfer()
@@ -73,6 +85,7 @@ async function initWaveSurfer(url: string) {
     barGap: 1,
     barRadius: 1,
     normalize: true,
+    dragToSeek: { debounceTime: 0 },
   })
   ws.setVolume(volume.value)
   ws.load(url)
@@ -83,7 +96,7 @@ async function initWaveSurfer(url: string) {
     localEnd.value = props.trimEnd || duration.value
   })
   ws.on("timeupdate", (t) => {
-    currentTime.value = t
+    syncDisplayedTime(t)
     if (trimMode.value && duration.value > 0 && !suppressLoop.value && t >= localEnd.value && !loopPending) {
       loopPending = true
       const target = localStart.value / duration.value
@@ -94,6 +107,7 @@ async function initWaveSurfer(url: string) {
     }
   })
   ws.on("interaction", (newTime: number) => {
+    currentTime.value = newTime
     suppressLoop.value = newTime >= localEnd.value
   })
   ws.on("play", () => { isPlaying.value = true; suppressLoop.value = false })
@@ -382,7 +396,7 @@ function formatTime(s: number): string {
       <!-- WaveSurfer container + trim overlay + loading overlay -->
       <div class="p-3 flex-1 flex flex-col justify-center">
         <div class="relative">
-          <div ref="containerRef" class="w-full" />
+          <div ref="containerRef" class="audio-editor-waveform relative z-0 w-full" />
           <div v-show="waveLoading"
             class="absolute inset-0 flex items-center justify-center bg-card/80 rounded"
           >
@@ -394,7 +408,7 @@ function formatTime(s: number): string {
           <div
             ref="overlayRef"
             v-show="trimMode && duration > 0"
-            class="absolute inset-0 pointer-events-none select-none"
+            class="absolute inset-0 z-10 pointer-events-none select-none"
           >
             <!-- Selected region -->
             <div
@@ -487,3 +501,14 @@ function formatTime(s: number): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.audio-editor-waveform ::part(progress) {
+  contain: layout paint;
+  will-change: width;
+}
+
+.audio-editor-waveform ::part(cursor) {
+  will-change: left, transform;
+}
+</style>
