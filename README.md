@@ -28,10 +28,10 @@
 
 <table>
   <tr>
-    <td><img width="100%" alt="Base-CN" src="https://github.com/user-attachments/assets/d0a4f27f-414d-4702-b17d-51287803da3f" /></td>
-    <td><img width="100%" alt="Voices-CN" src="https://github.com/user-attachments/assets/110528b5-bce5-4fc1-8a9e-a007ed669e58" /></td>
-    <td><img width="100%" alt="Batch-CN" src="https://github.com/user-attachments/assets/a8e54e29-7341-4b68-bc6a-723101f97492" /></td>
-    <td><img width="100%" alt="Setting-CN" src="https://github.com/user-attachments/assets/e12a58d0-ed02-4bd3-b9b3-421024b4298f" /></td>
+    <td><img width="100%" alt="Base-CN" src="https://github.com/user-attachments/assets/c19046da-5e5c-4b57-adeb-a45d95e3c3b9" /></td>
+    <td><img width="100%" alt="Voices-CN" src="https://github.com/user-attachments/assets/62692ad8-0cfb-4b23-964e-f44b1ed94735" /></td>
+    <td><img width="100%" alt="Batch-CN" src="https://github.com/user-attachments/assets/abcf7917-877f-43e7-a6a6-dce943f32703" /></td>
+    <td><img width="100%" alt="Setting-CN" src="https://github.com/user-attachments/assets/ca3a2d66-7b93-4d44-b7cc-fed0f70e693e" /></td>
   </tr>
 </table>
 
