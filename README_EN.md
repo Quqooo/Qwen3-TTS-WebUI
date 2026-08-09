@@ -28,10 +28,10 @@ A full-featured web interface for Qwen3-TTS built with **FastAPI + Vue 3**, repl
 
 <table>
   <tr>
-    <td><img width="100%" alt="Base-EN" src="https://github.com/user-attachments/assets/cfb861db-c0b7-4979-9183-d79d9af52672" /></td>
-    <td><img width="100%" alt="Voices-EN" src="https://github.com/user-attachments/assets/e7c6d645-e0c5-44e4-99a3-7e4ac5071373" /></td>
-    <td><img width="100%" alt="Batch-EN" src="https://github.com/user-attachments/assets/b3c6daa5-c432-4e57-86a9-fbe92334f2f6" /></td>
-    <td><img width="100%" alt="Setting-EN" src="https://github.com/user-attachments/assets/aae11860-3422-484a-ac53-6ffe89e1e9fd" /></td>
+    <td><img width="100%" alt="Base-EN" src="https://github.com/user-attachments/assets/04e79278-dc0c-4674-9888-c7adb39c24b6" /></td>
+    <td><img width="100%" alt="Voices-EN" src="https://github.com/user-attachments/assets/702dd493-b54b-4743-8d65-abbd9f7da657" /></td>
+    <td><img width="100%" alt="Batch-EN" src="https://github.com/user-attachments/assets/3f027957-3939-47dc-90d7-f472a8a9008b" /></td>
+    <td><img width="100%" alt="Setting-EN" src="https://github.com/user-attachments/assets/8f9a86a4-8204-4903-84c5-c12c8fa05389" /></td>
   </tr>
 </table>
 
