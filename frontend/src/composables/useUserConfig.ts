@@ -15,6 +15,7 @@ const DEFAULT_PARAMS: GenerationParamsConfig = {
   min_new_tokens: undefined,
   max_new_tokens: 2048,
   non_streaming_mode: undefined,
+  seed: undefined,
 }
 
 const DEFAULT_PARAMS_BY_KIND: Record<ModelKind, GenerationParamsConfig> = {

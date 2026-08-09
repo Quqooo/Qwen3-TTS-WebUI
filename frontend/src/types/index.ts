@@ -76,6 +76,7 @@ export interface GenerationParams {
   min_new_tokens?: number
   max_new_tokens?: number
   non_streaming_mode?: boolean
+  seed?: number
 }
 
 export interface GenerationParamsConfig extends GenerationParams {

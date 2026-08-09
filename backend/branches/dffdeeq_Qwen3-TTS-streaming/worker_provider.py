@@ -10,12 +10,12 @@ _LOAD_OPTIONS = {"device_map", "dtype", "attn_implementation", "local_files_only
 _GENERATION_OPTIONS = {
     "do_sample", "top_k", "top_p", "temperature", "repetition_penalty",
     "subtalker_dosample", "subtalker_top_k", "subtalker_top_p",
-    "subtalker_temperature", "max_new_tokens", "min_new_tokens",
+    "subtalker_temperature", "max_new_tokens", "min_new_tokens", "seed",
 }
 _STREAM_GENERATION_OPTIONS = {
     "do_sample", "top_k", "top_p", "temperature",
     "subtalker_dosample", "subtalker_top_k",
-    "subtalker_top_p", "subtalker_temperature",
+    "subtalker_top_p", "subtalker_temperature", "seed",
 }
 _PROVIDER_OPTIONS = {
     "use_compile", "use_cuda_graphs", "compile_mode", "use_fast_codebook",
@@ -41,6 +41,27 @@ def _audio_result(result: Any):
 
     wavs, sample_rate = result
     return [np.asarray(wav, dtype=np.float32) for wav in wavs], int(sample_rate)
+
+
+def _scoped_generate(model: Any, method: str, kwargs: Dict[str, Any]) -> Any:
+    """取出 seed 后包裹模型调用；HF generate 不接受 generator，用作用域全局 seed。"""
+    seed = kwargs.pop("seed", None)
+    fn = getattr(model, method)
+    if seed is None:
+        return fn(**kwargs)
+    with common.scoped_torch_seed(seed):
+        return fn(**kwargs)
+
+
+def _scoped_yield_from(model: Any, method: str, kwargs: Dict[str, Any]):
+    """流式生成：seed 的作用域必须覆盖整个迭代过程。"""
+    seed = kwargs.pop("seed", None)
+    generator = getattr(model, method)(**kwargs)
+    if seed is None:
+        yield from generator
+    else:
+        with common.scoped_torch_seed(seed):
+            yield from generator
 
 
 class StreamingQwenProvider(WorkerProvider):
@@ -115,18 +136,18 @@ class StreamingQwenProvider(WorkerProvider):
                           x_vector_only_mode=request.get("x_vector_only", False))
         else:
             raise ProviderValidationError("Base model requires voice_file or ref_audio")
-        return _audio_result(model.generate_voice_clone(**kwargs))
+        return _audio_result(_scoped_generate(model, "generate_voice_clone", kwargs))
 
     def generate_custom_voice(self, model: Any, request: Dict[str, Any]):
-        return _audio_result(model.generate_custom_voice(
-            text=request["text"], speaker=request["speaker"], language=request.get("language", "Auto"),
-            instruct=request.get("instruct"),
-            **_generation_values(request)))
+        return _audio_result(_scoped_generate(model, "generate_custom_voice", {
+            "text": request["text"], "speaker": request["speaker"], "language": request.get("language", "Auto"),
+            "instruct": request.get("instruct"),
+            **_generation_values(request)}))
 
     def generate_voice_design(self, model: Any, request: Dict[str, Any]):
-        return _audio_result(model.generate_voice_design(
-            text=request["text"], instruct=request["instruct"], language=request.get("language", "Auto"),
-            **_generation_values(request)))
+        return _audio_result(_scoped_generate(model, "generate_voice_design", {
+            "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
+            **_generation_values(request)}))
 
     def stream_voice_clone(self, model: Any, request: Dict[str, Any]):
         kwargs = {"text": request["text"], "language": request.get("language", "Auto"),
@@ -140,26 +161,26 @@ class StreamingQwenProvider(WorkerProvider):
                           x_vector_only_mode=request.get("x_vector_only", False))
         else:
             raise ProviderValidationError("Base model requires voice_file or ref_audio")
-        yield from model.stream_generate_voice_clone(**kwargs)
+        yield from _scoped_yield_from(model, "stream_generate_voice_clone", kwargs)
 
     def stream_custom_voice(self, model: Any, request: Dict[str, Any]):
         input_ids = model._tokenize_texts([model._build_assistant_text(request["text"])])
         instruct = request.get("instruct") or ""
         instruct_ids = model._tokenize_texts([model._build_instruct_text(instruct)]) if instruct else None
-        yield from model.model.stream_generate_pcm(
-            input_ids=input_ids, instruct_ids=instruct_ids,
-            languages=[request.get("language", "Auto")], speakers=[request["speaker"]],
+        yield from _scoped_yield_from(model.model, "stream_generate_pcm", {
+            "input_ids": input_ids, "instruct_ids": instruct_ids,
+            "languages": [request.get("language", "Auto")], "speakers": [request["speaker"]],
             **self._stream_options(request),
-            **_filtered(request.get("generation_params", {}), _STREAM_GENERATION_OPTIONS))
+            **_filtered(request.get("generation_params", {}), _STREAM_GENERATION_OPTIONS)})
 
     def stream_voice_design(self, model: Any, request: Dict[str, Any]):
         input_ids = model._tokenize_texts([model._build_assistant_text(request["text"])])
         instruct_ids = model._tokenize_texts([model._build_instruct_text(request["instruct"])])
-        yield from model.model.stream_generate_pcm(
-            input_ids=input_ids, instruct_ids=instruct_ids,
-            languages=[request.get("language", "Auto")],
+        yield from _scoped_yield_from(model.model, "stream_generate_pcm", {
+            "input_ids": input_ids, "instruct_ids": instruct_ids,
+            "languages": [request.get("language", "Auto")],
             **self._stream_options(request),
-            **_filtered(request.get("generation_params", {}), _STREAM_GENERATION_OPTIONS))
+            **_filtered(request.get("generation_params", {}), _STREAM_GENERATION_OPTIONS)})
 
     @staticmethod
     def _stream_options(request: Dict[str, Any]) -> Dict[str, Any]:

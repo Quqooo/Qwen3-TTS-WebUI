@@ -28,6 +28,7 @@ from ..config import require_qwen, resolve_model_path
 from ..errors import APIError, raise_error
 from ..routers.ws import broadcast_cache_status
 from ..voices import manager as voice_manager
+from ..worker.common import derive_stream_seed
 
 router = APIRouter(prefix="/api", tags=["synthesis"], dependencies=[Depends(require_qwen)])
 FIRST_STREAM_CHUNK_TIMEOUT = 600.0
@@ -49,6 +50,7 @@ class GenerationParamsModel(BaseModel):
     min_new_tokens: Optional[StrictInt] = Field(None, ge=1, le=_MAX_GENERATION_LENGTH)
     max_new_tokens: Optional[StrictInt] = Field(None, ge=1, le=_MAX_GENERATION_LENGTH)
     non_streaming_mode: Optional[bool] = None
+    seed: Optional[StrictInt] = Field(None, ge=0, le=9223372036854775807)
 
 
 class OutputParamsModel(BaseModel):
@@ -321,6 +323,28 @@ def _stream_branch_options(body: SynthesisRequest) -> Dict[str, Any]:
     }
 
 
+def _split_part_kwargs(kwargs: Dict[str, Any], seed: Optional[int], index: int) -> Dict[str, Any]:
+    """分段合成时按 seed + 段序号派生每段种子，避免所有分段消费同一 RNG 序列。"""
+    if seed is None:
+        return kwargs
+    part_kwargs = dict(kwargs)
+    params = dict(part_kwargs.get("generation_params") or {})
+    params["seed"] = derive_stream_seed(seed, f"part:{index}")
+    part_kwargs["generation_params"] = params
+    return part_kwargs
+
+
+def _part_iter(kwargs: Dict[str, Any], parts: List[str]):
+    """逐段产出 (part, part_kwargs)；多段时注入派生 seed，单段保持原样。"""
+    seed = (kwargs.get("generation_params") or {}).get("seed")
+    if len(parts) <= 1:
+        for part in parts:
+            yield part, kwargs
+        return
+    for index, part in enumerate(parts):
+        yield part, _split_part_kwargs(kwargs, seed, index)
+
+
 async def _handle_base_synthesis(
     branch, body, fmt, gen_kwargs, touch_model=None, finish_stream=None,
 ):
@@ -388,10 +412,10 @@ async def _handle_base_synthesis(
     all_wavs = []
     model_sr = 24000
 
-    for part in parts:
+    for part, part_kwargs in _part_iter(gen_fn_kwargs, parts):
         wavs, sr = await branch.generate_voice_clone(
             text=part,
-            **{k: v for k, v in gen_fn_kwargs.items() if k != "text"},
+            **{k: v for k, v in part_kwargs.items() if k != "text"},
         )
         model_sr = sr
         all_wavs.append(np.asarray(wavs[0], dtype=np.float32))
@@ -428,12 +452,12 @@ async def _handle_custom_voice_synthesis(
     all_wavs = []
     model_sr = 24000
 
-    for part in parts:
+    for part, part_kwargs in _part_iter(gen_kwargs, parts):
         wavs, sr = await branch.generate_custom_voice(
             text=part,
             speaker=speaker,
             instruct=body.instruct,
-            **gen_kwargs,
+            **part_kwargs,
         )
         model_sr = sr
         all_wavs.append(np.asarray(wavs[0], dtype=np.float32))
@@ -469,11 +493,11 @@ async def _handle_voice_design_synthesis(
     all_wavs = []
     model_sr = 24000
 
-    for part in parts:
+    for part, part_kwargs in _part_iter(gen_kwargs, parts):
         wavs, sr = await branch.generate_voice_design(
             text=part,
             instruct=instruct,
-            **gen_kwargs,
+            **part_kwargs,
         )
         model_sr = sr
         all_wavs.append(np.asarray(wavs[0], dtype=np.float32))

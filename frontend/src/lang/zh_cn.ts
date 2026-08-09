@@ -450,6 +450,10 @@ export const zh_cn = {
       enabledMode: '开启',
       disabledMode: '关闭',
       notSet: '不设置',
+      seed: 'Seed',
+      seedRandom: '留空 = 随机',
+      seedRandomize: '随机生成',
+      seedTooltip: '固定随机种子：相同输入、相同参数与相同 seed 可复现同一合成结果；修改 seed 可获得另一种受控结果。留空表示不设置，每次结果随机。\n可复现性仅在相同模型、软件版本与 GPU 架构下保证；不同 PyTorch/CUDA 版本或显卡之间仍可能因浮点误差导致输出分叉。',
     },
     splitStreamPanel: {
       split: '文本切分',

@@ -11,12 +11,22 @@ _GENERATION_OPTIONS = {
     "do_sample", "top_k", "top_p", "temperature", "repetition_penalty",
     "subtalker_dosample", "subtalker_top_k", "subtalker_top_p",
     "subtalker_temperature", "max_new_tokens", "min_new_tokens",
-    "non_streaming_mode",
+    "non_streaming_mode", "seed",
 }
 
 
 def _filtered(values: Dict[str, Any], allowed: set) -> Dict[str, Any]:
     return {key: value for key, value in (values or {}).items() if key in allowed and value is not None}
+
+
+def _scoped_generate(model: Any, method: str, kwargs: Dict[str, Any]) -> Any:
+    """取出 seed 后包裹模型调用；HF generate 不接受 generator，用作用域全局 seed。"""
+    seed = kwargs.pop("seed", None)
+    fn = getattr(model, method)
+    if seed is None:
+        return fn(**kwargs)
+    with common.scoped_torch_seed(seed):
+        return fn(**kwargs)
 
 
 def _audio_result(result: Any):
@@ -88,21 +98,21 @@ class OfficialQwenProvider(WorkerProvider):
             )
         else:
             raise ProviderValidationError("Base model requires voice_file or ref_audio")
-        return _audio_result(model.generate_voice_clone(**kwargs))
+        return _audio_result(_scoped_generate(model, "generate_voice_clone", kwargs))
 
     def generate_custom_voice(self, model: Any, request: Dict[str, Any]):
-        return _audio_result(model.generate_custom_voice(
-            text=request["text"], speaker=request["speaker"],
-            language=request.get("language", "Auto"), instruct=request.get("instruct"),
+        return _audio_result(_scoped_generate(model, "generate_custom_voice", {
+            "text": request["text"], "speaker": request["speaker"],
+            "language": request.get("language", "Auto"), "instruct": request.get("instruct"),
             **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS),
-        ))
+        }))
 
     def generate_voice_design(self, model: Any, request: Dict[str, Any]):
-        return _audio_result(model.generate_voice_design(
-            text=request["text"], instruct=request["instruct"],
-            language=request.get("language", "Auto"),
+        return _audio_result(_scoped_generate(model, "generate_voice_design", {
+            "text": request["text"], "instruct": request["instruct"],
+            "language": request.get("language", "Auto"),
             **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS),
-        ))
+        }))
 
     def create_voice_clone_prompt(self, model: Any, request: Dict[str, Any]) -> List[Dict[str, Any]]:
         items = model.create_voice_clone_prompt(

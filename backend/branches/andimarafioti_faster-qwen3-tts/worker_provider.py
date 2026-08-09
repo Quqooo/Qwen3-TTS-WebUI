@@ -9,7 +9,7 @@ from backend.worker.provider import ProviderCapabilities, ProviderValidationErro
 _LOAD_OPTIONS = {"device", "dtype", "local_files_only"}
 _GENERATION_OPTIONS = {
     "max_new_tokens", "min_new_tokens", "temperature", "top_k", "top_p",
-    "do_sample", "repetition_penalty", "non_streaming_mode",
+    "do_sample", "repetition_penalty", "non_streaming_mode", "seed",
 }
 _PREDICTOR_GRAPH_DEFAULTS = {
     "do_sample": True,
@@ -27,6 +27,27 @@ def _audio_result(result: Any):
     import numpy as np
     wavs, sample_rate = result
     return [np.asarray(wav, dtype=np.float32) for wav in wavs], int(sample_rate)
+
+
+def _scoped_generate(model: Any, method: str, kwargs: Dict[str, Any]) -> Any:
+    """取出 seed 后包裹模型调用；图内/图外采样均消费全局 RNG，作用域固定即可整体复现。"""
+    seed = kwargs.pop("seed", None)
+    fn = getattr(model, method)
+    if seed is None:
+        return fn(**kwargs)
+    with common.scoped_torch_seed(seed):
+        return fn(**kwargs)
+
+
+def _scoped_yield_from(model: Any, method: str, kwargs: Dict[str, Any]):
+    """流式生成：seed 的作用域必须覆盖整个迭代过程（含 CUDA Graph 图内采样）。"""
+    seed = kwargs.pop("seed", None)
+    generator = getattr(model, method)(**kwargs)
+    if seed is None:
+        yield from generator
+    else:
+        with common.scoped_torch_seed(seed):
+            yield from generator
 
 
 def _predictor_graph_options(values: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -116,18 +137,18 @@ class FasterQwenProvider(WorkerProvider):
         return kwargs
 
     def generate_voice_clone(self, model: Any, request: Dict[str, Any]):
-        return _audio_result(model.generate_voice_clone(**self._clone_kwargs(model, request)))
+        return _audio_result(_scoped_generate(model, "generate_voice_clone", self._clone_kwargs(model, request)))
 
     def generate_custom_voice(self, model: Any, request: Dict[str, Any]):
-        return _audio_result(model.generate_custom_voice(
-            text=request["text"], speaker=request["speaker"], language=request.get("language", "Auto"),
-            instruct=request.get("instruct"),
-            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)))
+        return _audio_result(_scoped_generate(model, "generate_custom_voice", {
+            "text": request["text"], "speaker": request["speaker"], "language": request.get("language", "Auto"),
+            "instruct": request.get("instruct"),
+            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
     def generate_voice_design(self, model: Any, request: Dict[str, Any]):
-        return _audio_result(model.generate_voice_design(
-            text=request["text"], instruct=request["instruct"], language=request.get("language", "Auto"),
-            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)))
+        return _audio_result(_scoped_generate(model, "generate_voice_design", {
+            "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
+            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
     def stream_voice_clone(self, model: Any, request: Dict[str, Any]):
         kwargs = self._clone_kwargs(model, request)
@@ -135,19 +156,19 @@ class FasterQwenProvider(WorkerProvider):
         parity_mode = (request.get("andimarafioti") or {}).get("parity_mode")
         if parity_mode is not None:
             kwargs["parity_mode"] = parity_mode
-        yield from self._normalize_stream(model.generate_voice_clone_streaming(**kwargs))
+        yield from self._normalize_stream(_scoped_yield_from(model, "generate_voice_clone_streaming", kwargs))
 
     def stream_custom_voice(self, model: Any, request: Dict[str, Any]):
-        yield from self._normalize_stream(model.generate_custom_voice_streaming(
-            text=request["text"], speaker=request["speaker"], language=request.get("language", "Auto"),
-            instruct=request.get("instruct"), **self._stream_options(request),
-            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)))
+        yield from self._normalize_stream(_scoped_yield_from(model, "generate_custom_voice_streaming", {
+            "text": request["text"], "speaker": request["speaker"], "language": request.get("language", "Auto"),
+            "instruct": request.get("instruct"), **self._stream_options(request),
+            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
     def stream_voice_design(self, model: Any, request: Dict[str, Any]):
-        yield from self._normalize_stream(model.generate_voice_design_streaming(
-            text=request["text"], instruct=request["instruct"], language=request.get("language", "Auto"),
+        yield from self._normalize_stream(_scoped_yield_from(model, "generate_voice_design_streaming", {
+            "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
             **self._stream_options(request),
-            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)))
+            **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
     @staticmethod
     def _stream_options(request: Dict[str, Any]) -> Dict[str, Any]:

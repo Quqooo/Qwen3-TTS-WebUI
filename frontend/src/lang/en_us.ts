@@ -450,6 +450,10 @@ export const en_us = {
       enabledMode: 'On',
       disabledMode: 'Off',
       notSet: 'Not set',
+      seed: 'Seed',
+      seedRandom: 'Empty = random',
+      seedRandomize: 'Randomize',
+      seedTooltip: 'Fixed random seed: the same input, parameters, and seed reproduce the same synthesis result; changing the seed yields another controlled result. Leave empty to keep current behavior (random each time).\nReproducibility is only guaranteed with the same model, software versions, and GPU architecture; outputs may still diverge across PyTorch/CUDA versions or GPU types due to floating-point differences.',
     },
     splitStreamPanel: {
       split: 'Split',

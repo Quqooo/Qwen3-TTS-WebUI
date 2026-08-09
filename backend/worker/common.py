@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import base64
+import contextlib
+import hashlib
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -159,3 +161,30 @@ def update_voice_meta(
         if 0 <= index < len(items) and isinstance(items[index], dict):
             items[index].update(update)
     return save_voice_payload(path, items)
+
+
+def derive_stream_seed(seed: int, stream: str) -> int:
+    """从请求 seed 派生独立随机流的种子，避免简单加法带来的流间关联。"""
+    digest = hashlib.sha256(f"qwen3tts-seed:{seed}:{stream}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
+
+
+@contextlib.contextmanager
+def scoped_torch_seed(seed: int):
+    """请求作用域内固定全局 RNG，退出时恢复原状态，避免污染后续请求。
+
+    适用于底层走 HF `generate`（不接受 generator 参数）的路径；依赖调用方
+    串行执行保证同一时刻只有一个请求使用全局 RNG。
+    """
+    torch = _torch()
+    cpu_state = torch.get_rng_state()
+    cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    torch.manual_seed(seed)
+    if cuda_states is not None:
+        torch.cuda.manual_seed_all(seed)
+    try:
+        yield
+    finally:
+        torch.set_rng_state(cpu_state)
+        if cuda_states is not None:
+            torch.cuda.set_rng_state_all(cuda_states)

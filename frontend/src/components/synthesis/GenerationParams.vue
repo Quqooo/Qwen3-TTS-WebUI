@@ -81,6 +81,11 @@ function samplingValue(value: boolean | undefined): string {
 function triStateValue(value: boolean | undefined): string {
   return value === undefined ? "default" : String(value)
 }
+
+function randomSeed() {
+  if (props.disabled) return
+  patch({ seed: Math.floor(Math.random() * 0xffffffff) })
+}
 </script>
 
 <template>
@@ -165,6 +170,20 @@ function triStateValue(value: boolean | undefined): string {
                 <input id="generation-temperature" name="generation_temperature" type="number" min="0.1" max="10" step="0.1" :value="valueOf('temperature')" placeholder="0.9" :disabled="!customParamsEnabled || modelValue.do_sample === false" class="param-input" @change="setNumber('temperature', ($event.target as HTMLInputElement).value, 0.1, 10)" />
               </div>
             </section>
+            <div class="grid grid-cols-[1fr_auto] gap-3">
+              <div class="space-y-1.5">
+                <label for="generation-seed" class="flex h-4 items-center text-[10px] text-muted-foreground" v-tooltip="$t('components.generationParams.seedTooltip')">{{ $t('components.generationParams.seed') }}</label>
+                <input id="generation-seed" name="generation_seed" type="number" min="0" max="4294967295" step="1" :value="valueOf('seed')" :placeholder="$t('components.generationParams.seedRandom')" :disabled="!customParamsEnabled" class="param-input" @change="setNumber('seed', ($event.target as HTMLInputElement).value, 0, 4294967295, true)" />
+              </div>
+              <div class="flex items-end pb-0.5">
+                <button
+                  type="button"
+                  class="h-8 px-3 text-xs border rounded-lg bg-secondary text-secondary-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!customParamsEnabled"
+                  @click="randomSeed"
+                >{{ $t('components.generationParams.seedRandomize') }}</button>
+              </div>
+            </div>
           </section>
 
           <section class="border-t pt-3 space-y-3">
