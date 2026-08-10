@@ -20,11 +20,11 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
   const outputFormat = ref("wav")
   const sampleRate = ref("24000")
   const gain = ref(0)
-  const emitEvery = ref(8)
-  const decodeWindow = ref(80)
-  const overlapSamples = ref(0)
-  const maxFrames = ref(10000)
-  const chunkSize = ref(12)
+  const emitEvery = ref<number | undefined>(8)
+  const decodeWindow = ref<number | undefined>(80)
+  const overlapSamples = ref<number | undefined>(0)
+  const maxFrames = ref<number | undefined>(10000)
+  const chunkSize = ref<number | undefined>(12)
   const parityMode = ref(false)
   const splitMode = ref<"" | "split" | "stream">("")
   const streamingEnabled = computed(() => splitMode.value === "stream")
@@ -116,16 +116,18 @@ export function useSynthesisSession({ kind, buildRequestExtras }: SynthesisSessi
           ),
         } : {}),
         ...(streamingEnabled.value && !modelStore.isFasterBranch ? {
-          dffdeeq: {
-            emit_every_frames: emitEvery.value,
-            decode_window_frames: decodeWindow.value,
-            overlap_samples: overlapSamples.value,
-            max_frames: maxFrames.value,
-          },
+          dffdeeq: Object.fromEntries(
+            Object.entries({
+              emit_every_frames: emitEvery.value,
+              decode_window_frames: decodeWindow.value,
+              overlap_samples: overlapSamples.value,
+              max_frames: maxFrames.value,
+            }).filter(([, value]) => value !== undefined),
+          ),
         } : {}),
         ...(streamingEnabled.value && modelStore.isFasterBranch ? {
           andimarafioti: {
-            chunk_size: chunkSize.value,
+            ...(chunkSize.value !== undefined ? { chunk_size: chunkSize.value } : {}),
             ...(kind === "base" ? { parity_mode: parityMode.value } : {}),
           },
         } : {}),

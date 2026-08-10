@@ -19,11 +19,6 @@ withDefaults(defineProps<{
   allowParityMode?: boolean
 }>(), {
   splitChars: '.。!！?？\n',
-  emitEvery: 8,
-  decodeWindow: 80,
-  overlapSamples: 0,
-  maxFrames: 10000,
-  chunkSize: 12,
   parityMode: false,
   fasterBranch: false,
   allowParityMode: false,
@@ -32,13 +27,21 @@ withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: "update:modelValue", val: string): void
   (e: "update:splitChars", val: string): void
-  (e: "update:emitEvery", val: number): void
-  (e: "update:decodeWindow", val: number): void
-  (e: "update:overlapSamples", val: number): void
-  (e: "update:maxFrames", val: number): void
-  (e: "update:chunkSize", val: number): void
+  (e: "update:emitEvery", val: number | undefined): void
+  (e: "update:decodeWindow", val: number | undefined): void
+  (e: "update:overlapSamples", val: number | undefined): void
+  (e: "update:maxFrames", val: number | undefined): void
+  (e: "update:chunkSize", val: number | undefined): void
   (e: "update:parityMode", val: boolean): void
 }>()
+
+// 留空（或非数字输入）= 不传该参数，由后端使用默认值；
+// 合法输入（含 0）原样传递
+function parseOptionalNumber(raw: string): number | undefined {
+  if (raw.trim() === "") return undefined
+  const value = parseInt(raw, 10)
+  return Number.isNaN(value) ? undefined : value
+}
 
 const segments = computed<Segment[]>(() => [
   { value: "split", label: t('components.splitStreamPanel.split'), icon: Scissors as unknown as Component },
@@ -79,9 +82,9 @@ const segments = computed<Segment[]>(() => [
             inputmode="numeric"
             pattern="[0-9]*"
             :value="chunkSize"
-            :size="String(chunkSize).length || 2"
+            :size="String(chunkSize ?? '').length || 2"
             class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
-            @input="emit('update:chunkSize', parseInt(($event.target as HTMLInputElement).value) || 12)"
+            @input="emit('update:chunkSize', parseOptionalNumber(($event.target as HTMLInputElement).value))"
           />
         </div>
         <div v-if="allowParityMode" class="flex items-center gap-1.5 text-xs whitespace-nowrap">
@@ -112,9 +115,9 @@ const segments = computed<Segment[]>(() => [
             inputmode="numeric"
             pattern="[0-9]*"
             :value="emitEvery"
-            :size="String(emitEvery).length || 1"
+            :size="String(emitEvery ?? '').length || 1"
             class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
-            @input="emit('update:emitEvery', parseInt(($event.target as HTMLInputElement).value) || 8)"
+            @input="emit('update:emitEvery', parseOptionalNumber(($event.target as HTMLInputElement).value))"
           />
         </div>
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
@@ -127,9 +130,9 @@ const segments = computed<Segment[]>(() => [
             inputmode="numeric"
             pattern="[0-9]*"
             :value="decodeWindow"
-            :size="String(decodeWindow).length || 2"
+            :size="String(decodeWindow ?? '').length || 2"
             class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
-            @input="emit('update:decodeWindow', parseInt(($event.target as HTMLInputElement).value) || 80)"
+            @input="emit('update:decodeWindow', parseOptionalNumber(($event.target as HTMLInputElement).value))"
           />
         </div>
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
@@ -142,9 +145,9 @@ const segments = computed<Segment[]>(() => [
             inputmode="numeric"
             pattern="[0-9]*"
             :value="overlapSamples"
-            :size="String(overlapSamples).length || 1"
+            :size="String(overlapSamples ?? '').length || 1"
             class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
-            @input="emit('update:overlapSamples', parseInt(($event.target as HTMLInputElement).value) || 0)"
+            @input="emit('update:overlapSamples', parseOptionalNumber(($event.target as HTMLInputElement).value))"
           />
         </div>
         <div class="flex items-center gap-1.5 text-xs whitespace-nowrap">
@@ -157,9 +160,9 @@ const segments = computed<Segment[]>(() => [
             inputmode="numeric"
             pattern="[0-9]*"
             :value="maxFrames"
-            :size="String(maxFrames).length || 4"
+            :size="String(maxFrames ?? '').length || 4"
             class="px-1.5 py-1 text-xs border rounded bg-background transition-colors duration-150 focus:border-primary focus:ring-0"
-            @input="emit('update:maxFrames', parseInt(($event.target as HTMLInputElement).value) || 10000)"
+            @input="emit('update:maxFrames', parseOptionalNumber(($event.target as HTMLInputElement).value))"
           />
         </div>
       </div>
