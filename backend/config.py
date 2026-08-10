@@ -2,18 +2,31 @@
 配置管理模块
 
 负责 WebUI 服务端配置的加载、保存和运行时访问。
-配置持久化存储于 SETTINGS_PATH 指定的 JSON 文件中。
+配置持久化存储于数据目录（见 resolve_data_dir）中的 settings.json。
 """
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import List
 
 from fastapi import HTTPException
 
-# 配置文件路径：位于本文件同级目录下的 settings.json
-SETTINGS_PATH = Path(__file__).parent / "settings.json"
+
+def resolve_data_dir() -> str:
+    """返回 WebUI 可写数据目录（settings.json 持久化位置）。"""
+    env_override = os.environ.get("QWEN3_WEBUI_DATA")
+    if env_override:
+        return os.path.abspath(env_override)
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "webui-data")
+    return str(Path(__file__).parent)
+
+
+def settings_path() -> Path:
+    """settings.json 的持久化路径。"""
+    return Path(resolve_data_dir()) / "settings.json"
 
 
 def parse_gpu_devices(value: str) -> List[str]:
@@ -166,8 +179,9 @@ def require_qwen():
 
 def load_settings():
     """从 JSON 文件加载配置"""
-    if SETTINGS_PATH.exists():
-        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+    path = settings_path()
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         settings.update(data)
     else:
@@ -176,8 +190,9 @@ def load_settings():
 
 def save_settings():
     """将当前配置持久化到 JSON 文件"""
-    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+    path = settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(settings.to_dict(), f, indent=2, ensure_ascii=False)
 
 

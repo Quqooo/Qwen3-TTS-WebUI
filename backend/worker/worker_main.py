@@ -14,13 +14,17 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 # Direct script execution only places backend/worker on sys.path. Providers use
-# canonical backend.worker imports, so make the repository package visible first.
+# canonical backend.worker imports, so make the repository package visible.
+# Append (not insert at 0): when the script runs from a PyInstaller-extracted
+# _MEI dir under an external Python, prepending would shadow that Python's own
+# stdlib extensions (_ctypes.pyd etc.) with build-machine ones and crash with
+# "Module use of pythonNNN.dll conflicts with this version of Python".
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+    sys.path.append(_REPO_ROOT)
 
 from backend.worker.common import (
     close_stream, decode_audio, deserialize_tensor, load_voice_payload,
@@ -54,7 +58,7 @@ class _AsyncRWLock:
         self._writers_waiting = 0
 
     @asynccontextmanager
-    async def read(self) -> AsyncIterator[None]:
+    async def read(self) -> AsyncGenerator[None, None]:
         async with self._cond:
             await self._cond.wait_for(
                 lambda: not self._writer and self._writers_waiting == 0
@@ -69,7 +73,7 @@ class _AsyncRWLock:
                     self._cond.notify_all()
 
     @asynccontextmanager
-    async def write(self) -> AsyncIterator[None]:
+    async def write(self) -> AsyncGenerator[None, None]:
         async with self._cond:
             self._writers_waiting += 1
             try:

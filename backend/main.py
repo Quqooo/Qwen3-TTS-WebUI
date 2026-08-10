@@ -273,9 +273,30 @@ if not _is_dev and _frontend_dist.is_dir():
 
 
 def main():
-    """CLI 入口：启动 FastAPI 服务器"""
+    """CLI 入口：启动 FastAPI 服务器。"""
+    import argparse
     import uvicorn
-    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000)
+
+    frozen = getattr(sys, "frozen", False)
+    if frozen:
+        parser = argparse.ArgumentParser(description="Qwen3-TTS WebUI")
+        parser.add_argument("--port", type=int, default=8000)
+        parser.add_argument("--no-browser", action="store_true")
+        parser.add_argument("--host", default="127.0.0.1")
+        args = parser.parse_args()
+
+        def _open_browser() -> None:
+            import time
+            import webbrowser
+            time.sleep(1.5)
+            webbrowser.open(f"http://{args.host}:{args.port}")
+
+        if not args.no_browser:
+            import threading
+            threading.Thread(target=_open_browser, daemon=True).start()
+        uvicorn.run(app, host=args.host, port=args.port)
+    else:
+        uvicorn.run("backend.main:app", host="127.0.0.1", port=8000)
 
 
 if __name__ == "__main__":
