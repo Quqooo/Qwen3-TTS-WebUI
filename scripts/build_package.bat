@@ -43,6 +43,12 @@ if errorlevel 1 (
 cd /d "%ROOT%"
 for /f "tokens=3" %%V in ('findstr /C:"version = " "%ROOT%\pyproject.toml"') do set "APP_VERSION=%%V"
 set "APP_VERSION=%APP_VERSION:"=%"
+if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
+    set "APP_ARCH=arm64"
+) else (
+    set "APP_ARCH=x86_64"
+)
+set "ARTIFACT=Qwen3-TTS-WebUI-v%APP_VERSION%-win-%APP_ARCH%"
 "%VENV_PY%" -m PyInstaller --clean --noconfirm "packaging\Qwen3-TTS-WebUI.spec"
 if errorlevel 1 (
     echo [ERROR] PyInstaller packaging failed
@@ -50,8 +56,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-for %%F in ("%ROOT%\dist\Qwen3-TTS-WebUI-%APP_VERSION%.exe") do set "SIZE_KB=%%~zF"
+for %%F in ("%ROOT%\dist\%ARTIFACT%.exe") do set "SIZE_KB=%%~zF"
 set /a SIZE_MB=%SIZE_KB% / 1048576
-echo Build completed: dist\Qwen3-TTS-WebUI-%APP_VERSION%.exe (%SIZE_MB% MB)
+echo Build completed: dist\%ARTIFACT%.exe (%SIZE_MB% MB)
 pause
 exit /b 0

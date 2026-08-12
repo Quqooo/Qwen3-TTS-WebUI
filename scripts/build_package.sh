@@ -21,8 +21,20 @@ fi
 
 # package
 APP_VERSION="$(grep -oP '^version\s*=\s*"\K[^"]+' "$ROOT/pyproject.toml")"
+ARCH="$(uname -m)"
+case "$ARCH" in
+    x86_64|amd64) ARCH="x86_64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+esac
+if ldd --version 2>/dev/null | grep -qi musl; then
+    LIBC_TAG="-musl"
+else
+    GLIBC="$(ldd --version 2>/dev/null | head -n1 | grep -oP '\)\s*\K[\d.]+')"
+    LIBC_TAG="-glibc${GLIBC}"
+fi
+ARTIFACT="Qwen3-TTS-WebUI-v${APP_VERSION}-linux-${ARCH}${LIBC_TAG}"
 "$VENV_PY" -m PyInstaller --clean --noconfirm "packaging/Qwen3-TTS-WebUI.spec"
 
-SIZE_MB=$(du -m "dist/Qwen3-TTS-WebUI-${APP_VERSION}" | cut -f1)
+SIZE_MB=$(du -m "dist/${ARTIFACT}" | cut -f1)
 echo
-echo "Build completed: dist/Qwen3-TTS-WebUI-${APP_VERSION} (${SIZE_MB} MB)"
+echo "Build completed: dist/${ARTIFACT} (${SIZE_MB} MB)"

@@ -42,7 +42,7 @@ A full-featured web interface for Qwen3-TTS built with **FastAPI + Vue 3**, repl
 | Component | Requirement |
 |-----------|-------------|
 | Python | 3.10+ |
-| Node.js | 18+ |
+| Node.js | 22+ |
 | Package Manager | pnpm |
 | ffmpeg | Optional, for MP3 / Opus / AAC format conversion |
 

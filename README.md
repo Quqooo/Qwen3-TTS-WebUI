@@ -42,7 +42,7 @@
 | 组件 | 要求 |
 |------|------|
 | Python | 3.10+ |
-| Node.js | 18+ |
+| Node.js | 22+ |
 | 包管理 | pnpm |
 | ffmpeg | 可选，用于 MP3 / Opus / AAC 格式转换 |
 

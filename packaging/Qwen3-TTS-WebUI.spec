@@ -5,6 +5,7 @@ Usage: pyinstaller --clean packaging/Qwen3-TTS-WebUI.spec
 Prereq: frontend built (backend/static/). Output: dist/Qwen3-TTS-WebUI(.exe).
 """
 import os
+import platform
 import sys
 import tomllib
 
@@ -14,6 +15,22 @@ static_dir = os.path.join(repo_root, "backend", "static")
 # Version from pyproject.toml is baked into the artifact name
 with open(os.path.join(repo_root, "pyproject.toml"), "rb") as _f:
     app_version = tomllib.load(_f)["project"]["version"]
+
+# Artifact name: {name}-v{version}-{os}-{arch}[-{libc}]
+_os_tag = "win" if sys.platform == "win32" else "linux"
+_arch = platform.machine().lower()
+if _arch in ("amd64",):
+    _arch = "x86_64"
+elif _arch == "aarch64":
+    _arch = "arm64"
+_libc_tag = ""
+if sys.platform.startswith("linux"):
+    try:
+        _libc_ver = os.confstr("CS_GNU_LIBC_VERSION")  # e.g. "glibc 2.39"
+    except (ValueError, OSError):
+        _libc_ver = ""
+    _libc_tag = f"-{_libc_ver.replace(' ', '')}" if _libc_ver else "-musl"
+artifact_name = f"Qwen3-TTS-WebUI-v{app_version}-{_os_tag}-{_arch}{_libc_tag}"
 
 if not os.path.isdir(static_dir) or not os.path.isfile(os.path.join(static_dir, "index.html")):
     raise SystemExit("backend/static missing; run `cd frontend && pnpm build` first")
@@ -104,7 +121,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name=f"Qwen3-TTS-WebUI-{app_version}",
+    name=artifact_name,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
