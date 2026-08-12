@@ -13,7 +13,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from ..config import settings
 from .worker_client import WorkerProcess
@@ -42,7 +42,7 @@ class WorkerPool:
         except ValueError:
             return len(self.gpu_priority())
 
-    def _by_priority(self, gpu_ids) -> List[str]:
+    def _by_priority(self, gpu_ids: Iterable[str]) -> List[str]:
         return sorted(gpu_ids, key=self._priority_index)
 
     @property

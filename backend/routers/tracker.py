@@ -7,7 +7,7 @@ router = APIRouter(prefix="/api", tags=["tracker"])
 
 
 @router.get("/tracker/status")
-async def tracker_status():
+async def tracker_status() -> dict:
     """返回各模型当前的推理任务数（含所在 GPU 明细）"""
     tracker = get_tracker()
     per_model = tracker.status()

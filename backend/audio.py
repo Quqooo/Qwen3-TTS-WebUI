@@ -14,7 +14,7 @@ import socket
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.error import HTTPError
 from urllib.parse import urljoin, urlparse
 from urllib.request import build_opener, HTTPRedirectHandler, Request as URLRequest
@@ -125,7 +125,7 @@ def _validate_remote_url(url: str) -> None:
 class _RejectRedirectHandler(HTTPRedirectHandler):
     """Disable urllib's automatic redirects so every hop can be revalidated."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(self, req: Any, fp: Any, code: Any, msg: Any, headers: Any, newurl: Any) -> None:
         return None
 
 

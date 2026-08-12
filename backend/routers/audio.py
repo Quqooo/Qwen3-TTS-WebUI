@@ -22,7 +22,7 @@ class TrimRequest(BaseModel):
 
 
 @router.post("/trim")
-async def trim_audio(body: TrimRequest):
+async def trim_audio(body: TrimRequest) -> dict:
     """裁剪音频"""
     if body.start >= body.end:
         raise_error(status_code=400, detail="start must be less than end")

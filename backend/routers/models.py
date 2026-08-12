@@ -58,7 +58,7 @@ def _detect_model_kind(name: str) -> str:
 
 
 @router.get("/models")
-async def list_models():
+async def list_models() -> dict:
     """列出所有可用模型"""
     model_ids = _get_model_ids()
     models = []
@@ -74,7 +74,7 @@ async def list_models():
 
 
 @router.get("/models/cache")
-async def cache_status():
+async def cache_status() -> dict:
     """获取模型缓存状态（含已加载模型的元数据）"""
     try:
         cache = get_cache_manager()
@@ -111,7 +111,7 @@ def _require_model_id(model_id: str) -> str:
 
 
 @router.post("/models/load")
-async def load_model(body: ModelIdRequest):
+async def load_model(body: ModelIdRequest) -> dict:
     """加载指定模型到缓存（模型类型自动识别）"""
     model_id = _require_model_id(body.model)
     kind = _detect_model_kind(model_id)
@@ -135,7 +135,7 @@ class UnloadModelRequest(BaseModel):
 
 
 @router.post("/models/unload")
-async def unload_model(body: UnloadModelRequest):
+async def unload_model(body: UnloadModelRequest) -> dict:
     """从缓存中卸载指定模型"""
     model_id = _require_model_id(body.model)
     try:
@@ -152,7 +152,7 @@ async def unload_model(body: UnloadModelRequest):
 
 
 @router.post("/models/unload_idle")
-async def unload_idle_models():
+async def unload_idle_models() -> dict:
     """卸载所有空闲超时的模型"""
     try:
         cache = get_cache_manager()
@@ -165,7 +165,7 @@ async def unload_idle_models():
 
 
 @router.post("/models/meta")
-async def model_meta(body: ModelMetaRequest):
+async def model_meta(body: ModelMetaRequest) -> dict:
     """获取模型支持的语言和说话人参数。
 
     模型加载后自动缓存；未缓存时返回默认值。

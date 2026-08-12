@@ -1,9 +1,15 @@
 """Worker provider for dffdeeq/Qwen3-TTS-streaming."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List, Optional
 
 from backend.worker import common
-from backend.worker.provider import ProviderCapabilities, ProviderValidationError, WorkerProvider
+from backend.worker.provider import (
+    AudioResult,
+    ProviderCapabilities,
+    ProviderValidationError,
+    StreamChunk,
+    WorkerProvider,
+)
 
 
 _LOAD_OPTIONS = {"device_map", "dtype", "attn_implementation", "local_files_only"}
@@ -36,7 +42,7 @@ def _generation_values(request: Dict[str, Any], allowed: set = _GENERATION_OPTIO
     return filtered
 
 
-def _audio_result(result: Any):
+def _audio_result(result: Any) -> AudioResult:
     import numpy as np
 
     wavs, sample_rate = result
@@ -53,7 +59,7 @@ def _scoped_generate(model: Any, method: str, kwargs: Dict[str, Any]) -> Any:
         return fn(**kwargs)
 
 
-def _scoped_yield_from(model: Any, method: str, kwargs: Dict[str, Any]):
+def _scoped_yield_from(model: Any, method: str, kwargs: Dict[str, Any]) -> Iterator[Any]:
     """流式生成：seed 的作用域必须覆盖整个迭代过程。"""
     seed = kwargs.pop("seed", None)
     generator = getattr(model, method)(**kwargs)
@@ -116,17 +122,17 @@ class StreamingQwenProvider(WorkerProvider):
         languages = [{"value": "Auto", "label": "Auto"}]
         seen = {"auto"}
         getter = getattr(model.model, "get_supported_languages", None)
-        for value in (getter() or []) if callable(getter) else []:
+        for value in (getter() or []) if getter is not None else []:
             value = str(value).strip()
             if value and value.casefold() not in seen:
                 seen.add(value.casefold())
                 languages.append({"value": value, "label": label(value)})
         getter = getattr(model.model, "get_supported_speakers", None)
         speakers = [{"value": value, "label": label(str(value))}
-                    for value in ((getter() or []) if callable(getter) else [])]
+                    for value in ((getter() or []) if getter is not None else [])]
         return {"languages": languages, "speakers": speakers}
 
-    def generate_voice_clone(self, model: Any, request: Dict[str, Any]):
+    def generate_voice_clone(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         kwargs = {"text": request["text"], "language": request.get("language", "Auto"),
                   **_generation_values(request)}
         if request.get("voice_clone_prompt") is not None:
@@ -138,18 +144,18 @@ class StreamingQwenProvider(WorkerProvider):
             raise ProviderValidationError("Base model requires voice_file or ref_audio")
         return _audio_result(_scoped_generate(model, "generate_voice_clone", kwargs))
 
-    def generate_custom_voice(self, model: Any, request: Dict[str, Any]):
+    def generate_custom_voice(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         return _audio_result(_scoped_generate(model, "generate_custom_voice", {
             "text": request["text"], "speaker": request["speaker"], "language": request.get("language", "Auto"),
             "instruct": request.get("instruct"),
             **_generation_values(request)}))
 
-    def generate_voice_design(self, model: Any, request: Dict[str, Any]):
+    def generate_voice_design(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         return _audio_result(_scoped_generate(model, "generate_voice_design", {
             "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
             **_generation_values(request)}))
 
-    def stream_generate_voice_clone(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_voice_clone(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         kwargs = {"text": request["text"], "language": request.get("language", "Auto"),
                   **self._stream_options(request),
                    **_generation_values(request, _STREAM_GENERATION_OPTIONS)}
@@ -163,7 +169,7 @@ class StreamingQwenProvider(WorkerProvider):
             raise ProviderValidationError("Base model requires voice_file or ref_audio")
         yield from _scoped_yield_from(model, "stream_generate_voice_clone", kwargs)
 
-    def stream_generate_custom_voice(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_custom_voice(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         input_ids = model._tokenize_texts([model._build_assistant_text(request["text"])])
         instruct = request.get("instruct") or ""
         instruct_ids = model._tokenize_texts([model._build_instruct_text(instruct)]) if instruct else None
@@ -173,7 +179,7 @@ class StreamingQwenProvider(WorkerProvider):
             **self._stream_options(request),
             **_filtered(request.get("generation_params", {}), _STREAM_GENERATION_OPTIONS)})
 
-    def stream_generate_voice_design(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_voice_design(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         input_ids = model._tokenize_texts([model._build_assistant_text(request["text"])])
         instruct_ids = model._tokenize_texts([model._build_instruct_text(request["instruct"])])
         yield from _scoped_yield_from(model.model, "stream_generate_pcm", {
@@ -222,7 +228,7 @@ class StreamingQwenProvider(WorkerProvider):
                           ref_text=item.get("ref_text")))
         return result
 
-    def decode_voice_preview(self, model: Any, item: Dict[str, Any]):
+    def decode_voice_preview(self, model: Any, item: Dict[str, Any]) -> Optional[AudioResult]:
         import numpy as np
         import torch
         code = item.get("ref_code")

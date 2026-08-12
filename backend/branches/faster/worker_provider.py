@@ -1,9 +1,15 @@
 """Worker provider for andimarafioti/faster-qwen3-tts."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List, Optional
 
 from backend.worker import common
-from backend.worker.provider import ProviderCapabilities, ProviderValidationError, WorkerProvider
+from backend.worker.provider import (
+    AudioResult,
+    ProviderCapabilities,
+    ProviderValidationError,
+    StreamChunk,
+    WorkerProvider,
+)
 
 
 _LOAD_OPTIONS = {"device", "dtype", "local_files_only"}
@@ -23,7 +29,7 @@ def _filtered(values: Dict[str, Any], allowed: set) -> Dict[str, Any]:
     return {key: value for key, value in (values or {}).items() if key in allowed and value is not None}
 
 
-def _audio_result(result: Any):
+def _audio_result(result: Any) -> AudioResult:
     import numpy as np
     wavs, sample_rate = result
     return [np.asarray(wav, dtype=np.float32) for wav in wavs], int(sample_rate)
@@ -39,7 +45,7 @@ def _scoped_generate(model: Any, method: str, kwargs: Dict[str, Any]) -> Any:
         return fn(**kwargs)
 
 
-def _scoped_yield_from(model: Any, method: str, kwargs: Dict[str, Any]):
+def _scoped_yield_from(model: Any, method: str, kwargs: Dict[str, Any]) -> Iterator[Any]:
     """流式生成：seed 的作用域必须覆盖整个迭代过程（含 CUDA Graph 图内采样）。"""
     seed = kwargs.pop("seed", None)
     generator = getattr(model, method)(**kwargs)
@@ -50,7 +56,7 @@ def _scoped_yield_from(model: Any, method: str, kwargs: Dict[str, Any]):
             yield from generator
 
 
-def _predictor_graph_options(values: Dict[str, Any] | None) -> Dict[str, Any]:
+def _predictor_graph_options(values: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return {**_PREDICTOR_GRAPH_DEFAULTS, **(values or {})}
 
 
@@ -107,14 +113,14 @@ class FasterQwenProvider(WorkerProvider):
         languages = [{"value": "Auto", "label": "Auto"}]
         seen = {"auto"}
         getter = getattr(qwen.model, "get_supported_languages", None)
-        for value in (getter() or []) if callable(getter) else []:
+        for value in (getter() or []) if getter is not None else []:
             value = str(value).strip()
             if value and value.casefold() not in seen:
                 seen.add(value.casefold())
                 languages.append({"value": value, "label": label(value)})
         getter = getattr(qwen.model, "get_supported_speakers", None)
         speakers = [{"value": value, "label": label(str(value))}
-                    for value in ((getter() or []) if callable(getter) else [])]
+                    for value in ((getter() or []) if getter is not None else [])]
         return {"languages": languages, "speakers": speakers}
 
     def _clone_kwargs(self, model: Any, request: Dict[str, Any]) -> Dict[str, Any]:
@@ -136,21 +142,21 @@ class FasterQwenProvider(WorkerProvider):
             raise ProviderValidationError("Base model requires voice_file or ref_audio")
         return kwargs
 
-    def generate_voice_clone(self, model: Any, request: Dict[str, Any]):
+    def generate_voice_clone(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         return _audio_result(_scoped_generate(model, "generate_voice_clone", self._clone_kwargs(model, request)))
 
-    def generate_custom_voice(self, model: Any, request: Dict[str, Any]):
+    def generate_custom_voice(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         return _audio_result(_scoped_generate(model, "generate_custom_voice", {
             "text": request["text"], "speaker": request["speaker"], "language": request.get("language", "Auto"),
             "instruct": request.get("instruct"),
             **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
-    def generate_voice_design(self, model: Any, request: Dict[str, Any]):
+    def generate_voice_design(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         return _audio_result(_scoped_generate(model, "generate_voice_design", {
             "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
             **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
-    def stream_generate_voice_clone(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_voice_clone(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         kwargs = self._clone_kwargs(model, request)
         kwargs.update(self._stream_options(request))
         parity_mode = (request.get("andimarafioti") or {}).get("parity_mode")
@@ -158,13 +164,13 @@ class FasterQwenProvider(WorkerProvider):
             kwargs["parity_mode"] = parity_mode
         yield from self._normalize_stream(_scoped_yield_from(model, "generate_voice_clone_streaming", kwargs))
 
-    def stream_generate_custom_voice(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_custom_voice(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         yield from self._normalize_stream(_scoped_yield_from(model, "generate_custom_voice_streaming", {
             "text": request["text"], "speaker": request["speaker"], "language": request.get("language", "Auto"),
             "instruct": request.get("instruct"), **self._stream_options(request),
             **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
-    def stream_generate_voice_design(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_voice_design(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         yield from self._normalize_stream(_scoped_yield_from(model, "generate_voice_design_streaming", {
             "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
             **self._stream_options(request),
@@ -176,7 +182,7 @@ class FasterQwenProvider(WorkerProvider):
         return {"chunk_size": values["chunk_size"]} if "chunk_size" in values else {}
 
     @staticmethod
-    def _normalize_stream(iterator: Any):
+    def _normalize_stream(iterator: Any) -> Iterator[StreamChunk]:
         import numpy as np
         for item in iterator:
             if not isinstance(item, tuple) or len(item) not in (2, 3):
@@ -209,7 +215,7 @@ class FasterQwenProvider(WorkerProvider):
                 icl_mode=bool(item.get("icl_mode", not xvec)), ref_text=item.get("ref_text")))
         return result
 
-    def decode_voice_preview(self, model: Any, item: Dict[str, Any]):
+    def decode_voice_preview(self, model: Any, item: Dict[str, Any]) -> Optional[AudioResult]:
         import numpy as np
         import torch
         code = item.get("ref_code")

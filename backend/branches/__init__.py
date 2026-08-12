@@ -98,7 +98,7 @@ def get_branch() -> TTSBranch:
     raise RuntimeError(f"No TTSBranch implementation found in module {module_path}")
 
 
-def clear_branch_cache():
+def clear_branch_cache() -> None:
     """清除分支实例缓存"""
     global _branch_instance
     _branch_instance = None

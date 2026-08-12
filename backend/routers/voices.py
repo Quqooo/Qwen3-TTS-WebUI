@@ -57,7 +57,7 @@ def _get_base_models_by_spk_dim(spk_dim: int) -> List[str]:
 
 
 @router.get("/voices")
-async def list_voices():
+async def list_voices() -> dict:
     """列出所有已保存的音色文件（仅名称）"""
     files = voice_manager.list_voice_files()
     return {"voices": [os.path.splitext(vf)[0] for vf in files]}
@@ -68,7 +68,7 @@ class VoiceNameRequest(BaseModel):
 
 
 @router.post("/voices")
-async def get_voice(body: VoiceNameRequest):
+async def get_voice(body: VoiceNameRequest) -> dict:
     """获取单个音色文件的详细元数据"""
     name = body.name
     full_path = voice_manager.resolve_voice_file(name)
@@ -127,7 +127,7 @@ def _find_first_base_model_id() -> str:
 
 
 @router.post("/voices/audio")
-async def preview_voice_audio(body: VoiceAudioPreviewRequest):
+async def preview_voice_audio(body: VoiceAudioPreviewRequest) -> dict:
     """解码音色文件的参考音频预览
 
     优先使用空闲的 Base 模型实例（空闲 GPU 上的实例优先）；
@@ -177,7 +177,7 @@ class VoiceUploadRequest(BaseModel):
 
 
 @router.post("/voices/upload")
-async def upload_voice(body: VoiceUploadRequest):
+async def upload_voice(body: VoiceUploadRequest) -> dict:
     """上传并创建音色文件"""
     from ..audio import download_audio
 
@@ -193,7 +193,7 @@ async def upload_voice(body: VoiceUploadRequest):
         raise_error(status_code=400, detail="ref_text is required when x_vector_only is false (ICL mode)")
 
     is_xvec = not is_icl
-    ref_text = body.text.strip() if has_text else None
+    ref_text = (body.text or "").strip() if has_text else None
     final_name = voice_manager.auto_increment_name(raw_name)
 
     try:
@@ -242,7 +242,7 @@ class VoiceEditRequest(BaseModel):
 
 
 @router.post("/voices/edit")
-async def edit_voice(body: VoiceEditRequest):
+async def edit_voice(body: VoiceEditRequest) -> dict:
     """编辑音色文件"""
     full_path = voice_manager.resolve_voice_file(body.name)
     if not full_path:
@@ -330,7 +330,7 @@ async def edit_voice(body: VoiceEditRequest):
 
     out_path = full_path
     if name_changed:
-        safe_name = voice_manager.sanitize_voice_path(body.new_name)
+        safe_name = voice_manager.sanitize_voice_path(body.new_name or "")
         safe = voice_manager._safe_join_name(safe_name)
         if safe is None:
             raise_error(status_code=400, detail=f"Invalid voice name: {body.new_name}")
@@ -347,7 +347,7 @@ class VoiceDeleteRequest(BaseModel):
 
 
 @router.post("/voices/delete")
-async def delete_voice(body: VoiceDeleteRequest):
+async def delete_voice(body: VoiceDeleteRequest) -> dict:
     """删除指定音色文件"""
     if voice_manager.delete_voice(body.name):
         return {"status": "deleted"}

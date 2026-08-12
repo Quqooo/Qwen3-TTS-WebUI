@@ -8,7 +8,7 @@ import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
 _logger = logging.getLogger("qwen-worker")
 
@@ -54,8 +54,8 @@ class WorkerProvider(ABC):
         self,
         model_path: str,
         model_kind: str,
-        load_options: Optional[Dict[str, Any]],
-        provider_options: Optional[Dict[str, Any]],
+        load_options: Dict[str, Any],
+        provider_options: Dict[str, Any],
     ) -> Any:
         raise NotImplementedError
 
@@ -128,7 +128,7 @@ def load_provider(provider_file: str) -> WorkerProvider:
             f"Provider module {provider_path} must expose a create_provider() callable"
         )
     try:
-        provider = create_provider()
+        provider = cast(WorkerProvider, create_provider())
     except Exception as exc:
         raise ProviderLoadError(f"Provider factory failed: {exc}") from exc
     validate_provider(provider)

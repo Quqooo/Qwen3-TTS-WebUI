@@ -6,7 +6,8 @@
 """
 import os
 import asyncio
-from typing import Any, Dict, List, Optional
+from collections.abc import Callable, Coroutine
+from typing import Any, AsyncGenerator, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 from fastapi import APIRouter, Depends
@@ -22,7 +23,7 @@ from ..audio import (
     resample,
     split_text,
 )
-from ..branches.base import NotSupportedError
+from ..branches.base import NotSupportedError, TTSBranch
 from ..cache import get_cache_manager
 from ..config import require_qwen, resolve_model_path
 from ..errors import APIError, raise_error
@@ -55,7 +56,7 @@ class GenerationParamsModel(BaseModel):
 
 class OutputParamsModel(BaseModel):
     format: str = "wav"
-    sample_rate: StrictInt = Field(24000, ge=1)
+    sample_rate: StrictInt = Field(default=24000, ge=1)
     gain: float = 0.0
 
 
@@ -113,12 +114,12 @@ class SynthesisRequest(BaseModel):
 
 
 @router.post("/synthesize")
-async def synthesize(body: SynthesisRequest):
+async def synthesize(body: SynthesisRequest) -> Response:
     """语音合成端点"""
     return await _do_synthesize(body)
 
 
-async def _do_synthesize(body: SynthesisRequest):
+async def _do_synthesize(body: SynthesisRequest) -> Response:
     cache = get_cache_manager()
 
     streaming = body.streaming
@@ -151,7 +152,7 @@ async def _do_synthesize(body: SynthesisRequest):
     )
 
     tbl = cache.branch
-    async def touch():
+    async def touch() -> None:
         await cache.touch_model(body.model, lease.gpu)
     tracker_owned_by_response = False
     lease_released = False
@@ -237,15 +238,20 @@ async def _do_synthesize(body: SynthesisRequest):
 
 
 def _stream_from_generator(
-    async_gen, body, fmt, touch_model=None, first_chunk=None, finish_stream=None,
-):
+    async_gen: AsyncGenerator[Tuple[np.ndarray, int], None],
+    body: SynthesisRequest,
+    fmt: str,
+    touch_model: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+    first_chunk: Optional[Tuple[np.ndarray, int]] = None,
+    finish_stream: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+) -> StreamingResponse:
     """将异步生成器包装为逐块 PCM 流式 StreamingResponse"""
     import numpy as np
 
     gain = body.output.gain
     output_sample_rate = body.output.sample_rate
 
-    async def stream_generator():
+    async def stream_generator() -> AsyncGenerator[bytes, None]:
         model_sr = None
         completed = False
         cancelled = False
@@ -333,7 +339,7 @@ def _split_part_kwargs(kwargs: Dict[str, Any], seed: Optional[int], index: int) 
     return part_kwargs
 
 
-def _part_iter(kwargs: Dict[str, Any], parts: List[str]):
+def _part_iter(kwargs: Dict[str, Any], parts: List[str]) -> Iterator[Tuple[str, Dict[str, Any]]]:
     """逐段产出 (part, part_kwargs)；多段时注入派生 seed，单段保持原样。"""
     seed = (kwargs.get("generation_params") or {}).get("seed")
     if len(parts) <= 1:
@@ -345,8 +351,11 @@ def _part_iter(kwargs: Dict[str, Any], parts: List[str]):
 
 
 async def _handle_base_synthesis(
-    branch, body, fmt, gen_kwargs, touch_model=None, finish_stream=None,
-):
+    branch: TTSBranch, body: SynthesisRequest, fmt: str,
+    gen_kwargs: Dict[str, Any],
+    touch_model: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+    finish_stream: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+) -> Response:
     """处理 Base 模型合成"""
     target_sr = body.output.sample_rate
 
@@ -426,8 +435,11 @@ async def _handle_base_synthesis(
 
 
 async def _handle_custom_voice_synthesis(
-    branch, body, fmt, gen_kwargs, touch_model=None, finish_stream=None,
-):
+    branch: TTSBranch, body: SynthesisRequest, fmt: str,
+    gen_kwargs: Dict[str, Any],
+    touch_model: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+    finish_stream: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+) -> Response:
     """处理 CustomVoice 模型合成"""
     target_sr = body.output.sample_rate
     speaker = body.speaker or "serena"
@@ -465,8 +477,11 @@ async def _handle_custom_voice_synthesis(
 
 
 async def _handle_voice_design_synthesis(
-    branch, body, fmt, gen_kwargs, touch_model=None, finish_stream=None,
-):
+    branch: TTSBranch, body: SynthesisRequest, fmt: str,
+    gen_kwargs: Dict[str, Any],
+    touch_model: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+    finish_stream: Optional[Callable[..., Coroutine[Any, Any, None]]] = None,
+) -> Response:
     """处理 VoiceDesign 模型合成"""
     target_sr = body.output.sample_rate
     instruct = body.instruct or ""
@@ -504,14 +519,16 @@ async def _handle_voice_design_synthesis(
     return _finalize_audio(all_wavs, model_sr, target_sr, body.output.gain, fmt)
 
 
-async def _resolve_ref_audio(ref_audio_url: str):
+async def _resolve_ref_audio(ref_audio_url: str) -> Tuple[np.ndarray, int]:
     """解析参考音频输入，返回 (waveform, sample_rate) 元组"""
     if ref_audio_url.startswith(("http://", "https://", "data:")):
         return download_audio(ref_audio_url)
     raise_error(status_code=400, detail="ref_audio must be an HTTP(S) URL or data URI")
 
 
-def _finalize_audio(all_wavs, model_sr, target_sr, gain_db, fmt):
+def _finalize_audio(
+    all_wavs: List[np.ndarray], model_sr: int, target_sr: int, gain_db: float, fmt: str,
+) -> Response:
     """拼接、后处理并返回最终音频"""
     if len(all_wavs) > 1:
         wav = np.concatenate(all_wavs)

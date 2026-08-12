@@ -5,15 +5,15 @@ import base64
 import contextlib
 import hashlib
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 
-def _numpy():
+def _numpy() -> Any:
     import numpy
     return numpy
 
 
-def _torch():
+def _torch() -> Any:
     import torch
     return torch
 
@@ -170,7 +170,7 @@ def derive_stream_seed(seed: int, stream: str) -> int:
 
 
 @contextlib.contextmanager
-def scoped_torch_seed(seed: int):
+def scoped_torch_seed(seed: int) -> Iterator[None]:
     """请求作用域内固定全局 RNG，退出时恢复原状态，避免污染后续请求。
 
     适用于底层走 HF `generate`（不接受 generator 参数）的路径；依赖调用方

@@ -61,7 +61,9 @@ class PooledWorkerBranch(TTSBranch):
     # ── 路由 ──────────────────────────────────────────────────
 
     @asynccontextmanager
-    async def _route(self, model_path: str, lease: Any = None, gpu_id: Optional[str] = None):
+    async def _route(
+        self, model_path: str, lease: Any = None, gpu_id: Optional[str] = None
+    ) -> AsyncGenerator[Tuple[WorkerProcess, str], None]:
         """解析模型实例对应的 Worker。
 
         lease 由缓存管理器在分配时完成计数，此处仅做路由；
@@ -210,7 +212,7 @@ class PooledWorkerBranch(TTSBranch):
         ref_audio: Optional[Any] = None, ref_text: Optional[str] = None,
         x_vector_only: bool = False, voice_file: Optional[str] = None,
         generation_params: Optional[Dict[str, Any]] = None,
-        lease: Any = None, instruct: Optional[str] = None,
+        instruct: Optional[str] = None, lease: Any = None,
     ) -> Tuple[List[np.ndarray], int]:
         cmd = self._build_clone_cmd(model_path, text, language, ref_audio, ref_text,
                                     x_vector_only, voice_file, generation_params,
@@ -294,7 +296,7 @@ class PooledWorkerBranch(TTSBranch):
         dffdeeq: Optional[Dict[str, Any]] = None,
         andimarafioti: Optional[Dict[str, Any]] = None,
         generation_params: Optional[Dict[str, Any]] = None,
-        lease: Any = None, instruct: Optional[str] = None,
+        instruct: Optional[str] = None, lease: Any = None,
     ) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
         self._check_streaming()
         cmd = self._build_clone_cmd(model_path, text, language, ref_audio, ref_text,
@@ -390,7 +392,7 @@ class PooledWorkerBranch(TTSBranch):
             raise RuntimeError((resp or {}).get("error", "Failed to save voice"))
         return resp["path"]
 
-    async def voice_update_meta(self, voice_file_path: str, item_updates: Optional[Dict[int, Dict[str, Any]]] = None) -> dict:
+    async def voice_update_meta(self, voice_file_path: str, item_updates: Optional[Dict[int, Dict[str, Any]]] = None) -> str:
         w = await self._pool.io_worker()
         resp = await w.send_cmd_detached({
             "cmd": "update_voice_meta", "voice_file_path": voice_file_path,

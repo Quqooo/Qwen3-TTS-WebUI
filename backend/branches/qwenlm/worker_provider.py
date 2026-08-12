@@ -1,9 +1,14 @@
 """Worker provider for the official Qwen3-TTS implementation."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from backend.worker import common
-from backend.worker.provider import ProviderCapabilities, ProviderValidationError, WorkerProvider
+from backend.worker.provider import (
+    AudioResult,
+    ProviderCapabilities,
+    ProviderValidationError,
+    WorkerProvider,
+)
 
 
 _LOAD_OPTIONS = {"device_map", "dtype", "attn_implementation", "local_files_only"}
@@ -29,7 +34,7 @@ def _scoped_generate(model: Any, method: str, kwargs: Dict[str, Any]) -> Any:
         return fn(**kwargs)
 
 
-def _audio_result(result: Any):
+def _audio_result(result: Any) -> AudioResult:
     import numpy as np
 
     wavs, sample_rate = result
@@ -43,14 +48,14 @@ def _format_options(tts: Any) -> Dict[str, Any]:
     languages = [{"value": "Auto", "label": "Auto"}]
     seen = {"auto"}
     getter = getattr(tts.model, "get_supported_languages", None)
-    for value in (getter() or []) if callable(getter) else []:
+    for value in (getter() or []) if getter is not None else []:
         value = str(value).strip()
         if value and value.casefold() not in seen:
             seen.add(value.casefold())
             languages.append({"value": value, "label": label(value)})
     speakers = []
     getter = getattr(tts.model, "get_supported_speakers", None)
-    for value in (getter() or []) if callable(getter) else []:
+    for value in (getter() or []) if getter is not None else []:
         speakers.append({"value": value, "label": label(str(value))})
     return {"languages": languages, "speakers": speakers}
 
@@ -82,7 +87,7 @@ class OfficialQwenProvider(WorkerProvider):
     def get_supported_options(self, model: Any) -> Dict[str, Any]:
         return _format_options(model)
 
-    def generate_voice_clone(self, model: Any, request: Dict[str, Any]):
+    def generate_voice_clone(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         kwargs = {
             "text": request["text"],
             "language": request.get("language", "Auto"),
@@ -100,14 +105,14 @@ class OfficialQwenProvider(WorkerProvider):
             raise ProviderValidationError("Base model requires voice_file or ref_audio")
         return _audio_result(_scoped_generate(model, "generate_voice_clone", kwargs))
 
-    def generate_custom_voice(self, model: Any, request: Dict[str, Any]):
+    def generate_custom_voice(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         return _audio_result(_scoped_generate(model, "generate_custom_voice", {
             "text": request["text"], "speaker": request["speaker"],
             "language": request.get("language", "Auto"), "instruct": request.get("instruct"),
             **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS),
         }))
 
-    def generate_voice_design(self, model: Any, request: Dict[str, Any]):
+    def generate_voice_design(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         return _audio_result(_scoped_generate(model, "generate_voice_design", {
             "text": request["text"], "instruct": request["instruct"],
             "language": request.get("language", "Auto"),
@@ -142,7 +147,7 @@ class OfficialQwenProvider(WorkerProvider):
             ))
         return result
 
-    def decode_voice_preview(self, model: Any, item: Dict[str, Any]):
+    def decode_voice_preview(self, model: Any, item: Dict[str, Any]) -> Optional[AudioResult]:
         import numpy as np
         import torch
 

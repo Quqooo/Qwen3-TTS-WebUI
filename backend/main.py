@@ -10,6 +10,7 @@ import os
 import sys
 import time
 from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,7 +85,7 @@ class RequestLogMiddleware:
     def __init__(self, app):
         self.app = app
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         if scope["type"] != "http" or not scope.get("path", "").startswith("/api/"):
             await self.app(scope, receive, send)
             return
@@ -101,7 +102,7 @@ class RequestLogMiddleware:
         status_code = 500
         response_content_type = ""
 
-        async def receive_wrapper():
+        async def receive_wrapper() -> Any:
             nonlocal request_size
             message = await receive()
             if message["type"] == "http.request":
@@ -112,7 +113,7 @@ class RequestLogMiddleware:
                     request_body.extend(chunk[:remaining])
             return message
 
-        async def send_wrapper(message):
+        async def send_wrapper(message: Any) -> None:
             nonlocal status_code, response_size, response_content_type
             if message["type"] == "http.response.start":
                 status_code = message["status"]
@@ -159,7 +160,7 @@ class RequestLogMiddleware:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """应用生命周期管理"""
     load_settings()
     idle_cleanup_task = asyncio.create_task(
@@ -235,7 +236,7 @@ if not _is_dev and _frontend_dist.is_dir():
         def __init__(self, app):
             self.app = app
 
-        async def __call__(self, scope, receive, send):
+        async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
             if scope["type"] != "http":
                 await self.app(scope, receive, send)
                 return
@@ -248,7 +249,7 @@ if not _is_dev and _frontend_dist.is_dir():
             index = _frontend_dist / "index.html"
             should_fallback = False
 
-            async def _send(message):
+            async def _send(message: Any) -> None:
                 nonlocal should_fallback
                 if (
                     message["type"] == "http.response.start"
@@ -272,7 +273,7 @@ if not _is_dev and _frontend_dist.is_dir():
     app.add_middleware(_SPAMiddleware)
 
 
-def main():
+def main() -> None:
     """CLI 入口：启动 FastAPI 服务器。"""
     import argparse
     import uvicorn

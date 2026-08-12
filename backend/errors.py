@@ -6,7 +6,7 @@
 - debug:  面向开发者的调试信息（可选）
 """
 import json
-from typing import List, Optional
+from typing import Any, List, NoReturn, Optional, Sequence
 
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
@@ -18,7 +18,7 @@ def _format_field_name(loc: tuple) -> str:
     return ".".join(parts) if parts else "request"
 
 
-def _validation_detail(errors: list) -> str:
+def _validation_detail(errors: Sequence[Any]) -> str:
     if not errors:
         return "Invalid request"
     msgs: List[str] = []
@@ -50,7 +50,7 @@ def raise_error(
     status_code: int,
     detail: str,
     debug: Optional[str] = None,
-):
+) -> NoReturn:
     """抛出标准化 API 错误"""
     raise APIError(status_code, detail, debug)
 

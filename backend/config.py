@@ -131,7 +131,7 @@ class AppSettings:
             "batch_composer": self.batch_composer,
         }
 
-    def update(self, data: dict):
+    def update(self, data: dict) -> None:
         """用传入的字典更新配置，仅更新字典中存在的键"""
         for key in (
             "gpu_devices",
@@ -168,7 +168,7 @@ class AppSettings:
 settings = AppSettings()
 
 
-def require_qwen():
+def require_qwen() -> None:
     """QwenTTS 可用性校验依赖项"""
     if not settings.qwen_configured:
         raise HTTPException(
@@ -177,7 +177,7 @@ def require_qwen():
         )
 
 
-def load_settings():
+def load_settings() -> None:
     """从 JSON 文件加载配置"""
     path = settings_path()
     if path.exists():
@@ -188,7 +188,7 @@ def load_settings():
         save_settings()
 
 
-def save_settings():
+def save_settings() -> None:
     """将当前配置持久化到 JSON 文件"""
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)

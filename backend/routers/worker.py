@@ -45,7 +45,7 @@ def _resolve_target(target: Optional[str], allow_all: bool) -> Tuple[Optional[st
 
 
 @router.get("/worker/status")
-async def worker_status():
+async def worker_status() -> dict:
     """查询 Worker 运行状态（含各 GPU 的 workers 数组）"""
     try:
         cm = get_cache_manager()
@@ -57,7 +57,7 @@ async def worker_status():
     return status
 
 
-async def _start(target: Optional[str]):
+async def _start(target: Optional[str]) -> dict:
     gpu_id, is_all = _resolve_target(target, allow_all=True)
     try:
         cm = get_cache_manager()
@@ -75,12 +75,12 @@ async def _start(target: Optional[str]):
 
 
 @router.post("/worker/start")
-async def worker_start(body: WorkerTargetRequest):
+async def worker_start(body: WorkerTargetRequest) -> dict:
     """启动 Worker；target 不传按优先级启动第一个未运行的，all 启动全部"""
     return await _start(body.target)
 
 
-async def _stop(target: Optional[str], *, force: bool):
+async def _stop(target: Optional[str], *, force: bool) -> dict:
     allow_all = True
     gpu_id, is_all = _resolve_target(target, allow_all)
     try:
@@ -99,12 +99,12 @@ async def _stop(target: Optional[str], *, force: bool):
 
 
 @router.post("/worker/stop")
-async def worker_stop(body: WorkerTargetRequest):
+async def worker_stop(body: WorkerTargetRequest) -> dict:
     """停止 Worker（等待推理到达安全边界）；target 不传按优先级停止第一个运行中的，all 全部"""
     return await _stop(body.target, force=False)
 
 
 @router.post("/worker/force-stop")
-async def worker_force_stop(body: WorkerTargetRequest):
+async def worker_force_stop(body: WorkerTargetRequest) -> dict:
     """强制停止 Worker；target 不传按优先级强制停止第一个运行中的，all 全部"""
     return await _stop(body.target, force=True)

@@ -129,7 +129,7 @@ def _run_compose(body: ComposeRequest) -> ComposeResponse:
 
 
 @router.post("/batch/compose", response_model=ComposeResponse)
-async def batch_compose(body: ComposeRequest):
+async def batch_compose(body: ComposeRequest) -> ComposeResponse:
     """将多段音频按时间轴对齐并合成为一条音频 + SRT 字幕。"""
     limits = _effective_limits()
 

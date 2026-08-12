@@ -2,6 +2,8 @@
 import asyncio
 import logging
 from pathlib import Path
+from typing import Any, Dict
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, StrictInt, model_validator
 from ..config import parse_gpu_devices, settings, save_settings
@@ -87,7 +89,7 @@ class BatchComposerSettings(BaseModel):
     @model_validator(mode="after")
     def validate_related_limits(self):
         current = settings.batch_composer or {}
-        values = {
+        values: Dict[str, Any] = {
             key: getattr(self, key) if getattr(self, key) is not None else current.get(key)
             for key in _BATCH_LIMIT_FIELDS
         }
@@ -130,7 +132,7 @@ class SettingsUpdate(BaseModel):
 
 
 @router.get("/api/settings")
-async def get_settings():
+async def get_settings() -> dict:
     """获取当前服务端配置"""
     return {
         **settings.to_dict(),
@@ -139,7 +141,7 @@ async def get_settings():
 
 
 @router.put("/api/settings")
-async def update_settings(data: SettingsUpdate):
+async def update_settings(data: SettingsUpdate) -> dict:
     """更新服务端配置"""
     data_dict = data.model_dump(exclude_none=True)
 
@@ -173,9 +175,6 @@ async def update_settings(data: SettingsUpdate):
         and data.andimarafioti.max_seq_len is not None
         and data.andimarafioti.max_seq_len != old_max_seq_len
     )
-    max_concurrent_changed = (
-        data.max_concurrent_models is not None and data.max_concurrent_models != old_max_concurrent
-    )
 
     if branch_changed or project_changed or max_seq_len_changed:
         from ..cache import get_cache_manager
@@ -190,7 +189,7 @@ async def update_settings(data: SettingsUpdate):
         if branch_changed:
             asyncio.create_task(broadcast_backend_status())
 
-    if max_concurrent_changed and data.max_concurrent_models < old_max_concurrent:
+    if data.max_concurrent_models is not None and data.max_concurrent_models < old_max_concurrent:
         # 调低并发上限后，若当前缓存实例数超出新上限，
         # 按 LRU 淘汰超出部分（忙碌实例由缓存管理器在推理完成后卸载）。
         from ..cache import get_cache_manager

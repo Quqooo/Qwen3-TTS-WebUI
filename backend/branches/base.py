@@ -6,7 +6,7 @@ TTS 后端分支基类
 避免在 Web 后端启动时导入 QwenTTS 依赖。
 """
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -29,6 +29,9 @@ class TTSBranch(ABC):
     各分支的支持功能可能不一致（如官方分支不支持流式推理）。
     对于可选功能，基类提供默认 raise NotSupportedError 的实现，
     分支只需覆盖它支持的方法即可。
+
+    注意：除 unload_idle_models 为同步外，其余接口均为异步协程；
+    流式生成接口为异步生成器。实现分支必须与这些签名保持一致。
     """
 
     @property
@@ -40,13 +43,13 @@ class TTSBranch(ABC):
     # ── 模型生命周期管理 ────────────────────────────────────────
 
     @abstractmethod
-    def load_model(self, model_path: str, model_kind: str, load_kwargs: Optional[Dict[str, Any]] = None,
-                   gpu_id: Optional[str] = None) -> None:
+    async def load_model(self, model_path: str, model_kind: str, load_kwargs: Optional[Dict[str, Any]] = None,
+                         gpu_id: Optional[str] = None) -> None:
         """加载模型；gpu_id 指定目标 GPU（None 时由实现按优先级选择）"""
         ...
 
     @abstractmethod
-    def unload_model(self, model_path: str, gpu_id: Optional[str] = None) -> None:
+    async def unload_model(self, model_path: str, gpu_id: Optional[str] = None) -> None:
         """卸载模型；gpu_id 指定卸载单个实例，None 卸载全部实例"""
         ...
 
@@ -55,11 +58,11 @@ class TTSBranch(ABC):
         ...
 
     @abstractmethod
-    def cached_models(self) -> Dict[str, Dict[str, Any]]:
+    async def cached_models(self) -> Dict[str, Dict[str, Any]]:
         ...
 
     @abstractmethod
-    def get_supported_options(self, model_path: str) -> Dict[str, Any]:
+    async def get_supported_options(self, model_path: str) -> Dict[str, Any]:
         ...
 
     async def wait_model_stoppable(self, model_path: str, gpu_id: Optional[str] = None) -> None:
@@ -74,29 +77,29 @@ class TTSBranch(ABC):
     # ── Worker 生命周期管理 ─────────────────────────────────────
 
     @abstractmethod
-    def worker_start(self, gpu_id: Optional[str] = None) -> None:
+    async def worker_start(self, gpu_id: Optional[str] = None) -> None:
         """启动 Worker 子进程；gpu_id 指定 GPU，None 按优先级启动第一个未运行的"""
         ...
 
     @abstractmethod
-    def worker_stop(self, gpu_id: Optional[str] = None, stop_all: bool = False) -> None:
+    async def worker_stop(self, gpu_id: Optional[str] = None, stop_all: bool = False) -> None:
         """等待不可中断操作到达安全边界后停止 Worker 子进程。"""
         ...
 
     @abstractmethod
-    def worker_force_stop(self, gpu_id: Optional[str] = None, stop_all: bool = False) -> None:
+    async def worker_force_stop(self, gpu_id: Optional[str] = None, stop_all: bool = False) -> None:
         """立即终止 Worker 子进程，不等待推理到达安全边界。"""
         ...
 
     @abstractmethod
-    def worker_status(self) -> Dict[str, Any]:
+    async def worker_status(self) -> Dict[str, Any]:
         """返回 Worker 运行状态（含各 GPU 的 workers 数组）"""
         ...
 
     # ── 生成接口 ────────────────────────────────────────────────
 
     @abstractmethod
-    def generate_voice_clone(
+    async def generate_voice_clone(
         self,
         model_path: str,
         text: str,
@@ -107,6 +110,7 @@ class TTSBranch(ABC):
         voice_file: Optional[str] = None,
         generation_params: Optional[Dict[str, Any]] = None,
         instruct: Optional[str] = None,
+        lease: Any = None,
     ) -> Tuple[List[np.ndarray], int]:
         """Base 模型：语音克隆生成
 
@@ -119,12 +123,13 @@ class TTSBranch(ABC):
         voice_file: 音色文件路径（与 ref_audio/ref_text 互斥）
         instruct: 可选生成指令（由支持 Base instruct 的后端使用）
         generation_params: 生成参数（do_sample, top_k, top_p, temperature、seed 等）
+        lease: 缓存管理器分配的实例租约（内部参数，供多卡负载均衡）
 
         返回: (音频列表, 采样率)
         """
         ...
 
-    def generate_custom_voice(
+    async def generate_custom_voice(
         self,
         model_path: str,
         text: str,
@@ -132,6 +137,7 @@ class TTSBranch(ABC):
         language: str = "Auto",
         instruct: Optional[str] = None,
         generation_params: Optional[Dict[str, Any]] = None,
+        lease: Any = None,
     ) -> Tuple[List[np.ndarray], int]:
         """CustomVoice 模型：固定说话人语音合成
 
@@ -141,19 +147,21 @@ class TTSBranch(ABC):
         language: 语言
         instruct: 指令文本（控制语气/风格等）
         generation_params: 生成参数
+        lease: 缓存管理器分配的实例租约（内部参数）
 
         返回: (音频列表, 采样率)
         默认抛出 NotSupportedError，分支覆盖此方法以支持固定说话人合成。
         """
         raise NotSupportedError(f"{self.name} does not support custom voice")
 
-    def generate_voice_design(
+    async def generate_voice_design(
         self,
         model_path: str,
         text: str,
         instruct: str,
         language: str = "Auto",
         generation_params: Optional[Dict[str, Any]] = None,
+        lease: Any = None,
     ) -> Tuple[List[np.ndarray], int]:
         """VoiceDesign 模型：自然语言音色设计语音合成
 
@@ -162,13 +170,14 @@ class TTSBranch(ABC):
         instruct: 音色描述指令
         language: 语言
         generation_params: 生成参数
+        lease: 缓存管理器分配的实例租约（内部参数）
 
         返回: (音频列表, 采样率)
         默认抛出 NotSupportedError，分支覆盖此方法以支持音色设计合成。
         """
         raise NotSupportedError(f"{self.name} does not support voice design")
 
-    def stream_generate_voice_clone(
+    async def stream_generate_voice_clone(
         self,
         model_path: str,
         text: str,
@@ -177,69 +186,66 @@ class TTSBranch(ABC):
         ref_text: Optional[str] = None,
         x_vector_only: bool = False,
         voice_file: Optional[str] = None,
-        emit_every_frames: int = 8,
-        decode_window_frames: int = 80,
-        overlap_samples: int = 0,
-        chunk_size: int = 12,
-        max_frames: int = 10000,
+        dffdeeq: Optional[Dict[str, Any]] = None,
+        andimarafioti: Optional[Dict[str, Any]] = None,
         generation_params: Optional[Dict[str, Any]] = None,
         instruct: Optional[str] = None,
-    ) -> Generator[Tuple[np.ndarray, int], None, None]:
+        lease: Any = None,
+    ) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
         """Base 模型：流式语音克隆生成
 
         参数同 generate_voice_clone，额外支持流式控制参数。
-        chunk_size 仅 Faster 分支生效（每块 codec 步数，12 ≈ 1 秒）。
-        以生成器方式逐个返回音频块。
+        dffdeeq / andimarafioti: 按分支命名空间隔离的流式参数（仅显式提供项生效）。
+        以异步生成器方式逐个返回音频块。
         默认抛出 NotSupportedError，分支覆盖此方法以支持流式。
         """
         raise NotSupportedError(f"{self.name} does not support streaming inference")
+        yield (np.zeros(0), 0)  # 不可达：仅使方法成为异步生成器，匹配抽象签名
 
-    def stream_generate_custom_voice(
+    async def stream_generate_custom_voice(
         self,
         model_path: str,
         text: str,
         speaker: str,
         language: str = "Auto",
         instruct: Optional[str] = None,
-        emit_every_frames: int = 8,
-        decode_window_frames: int = 80,
-        overlap_samples: int = 0,
-        chunk_size: int = 12,
-        max_frames: int = 10000,
+        dffdeeq: Optional[Dict[str, Any]] = None,
+        andimarafioti: Optional[Dict[str, Any]] = None,
         generation_params: Optional[Dict[str, Any]] = None,
-    ) -> Generator[Tuple[np.ndarray, int], None, None]:
+        lease: Any = None,
+    ) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
         """CustomVoice 模型：流式固定说话人语音合成
 
         参数同 generate_custom_voice，额外支持流式控制参数。
-        chunk_size 仅 Faster 分支生效（每块 codec 步数，12 ≈ 1 秒）。
-        以生成器方式逐个返回音频块。
+        dffdeeq / andimarafioti: 按分支命名空间隔离的流式参数（仅显式提供项生效）。
+        以异步生成器方式逐个返回音频块。
         默认抛出 NotSupportedError，分支覆盖此方法以支持流式。
         """
         raise NotSupportedError(f"{self.name} does not support streaming inference")
+        yield (np.zeros(0), 0)  # 不可达：仅使方法成为异步生成器，匹配抽象签名
 
-    def stream_generate_voice_design(
+    async def stream_generate_voice_design(
         self,
         model_path: str,
         text: str,
         instruct: str,
         language: str = "Auto",
-        emit_every_frames: int = 8,
-        decode_window_frames: int = 80,
-        overlap_samples: int = 0,
-        chunk_size: int = 12,
-        max_frames: int = 10000,
+        dffdeeq: Optional[Dict[str, Any]] = None,
+        andimarafioti: Optional[Dict[str, Any]] = None,
         generation_params: Optional[Dict[str, Any]] = None,
-    ) -> Generator[Tuple[np.ndarray, int], None, None]:
+        lease: Any = None,
+    ) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
         """VoiceDesign 模型：流式自然语言音色设计语音合成
 
         参数同 generate_voice_design，额外支持流式控制参数。
-        chunk_size 仅 Faster 分支生效（每块 codec 步数，12 ≈ 1 秒）。
-        以生成器方式逐个返回音频块。
+        dffdeeq / andimarafioti: 按分支命名空间隔离的流式参数（仅显式提供项生效）。
+        以异步生成器方式逐个返回音频块。
         默认抛出 NotSupportedError，分支覆盖此方法以支持流式。
         """
         raise NotSupportedError(f"{self.name} does not support streaming inference")
+        yield (np.zeros(0), 0)  # 不可达：仅使方法成为异步生成器，匹配抽象签名
 
-    def create_voice_clone_prompt(
+    async def create_voice_clone_prompt(
         self,
         model_path: str,
         ref_audio: Any,
@@ -256,7 +262,7 @@ class TTSBranch(ABC):
 
     # ── 音色文件 I/O（通过 Worker 子进程处理 .pt 文件） ────────
 
-    def voice_load_meta(self, voice_file_path: str) -> Optional[Dict[str, Any]]:
+    async def voice_load_meta(self, voice_file_path: str) -> Optional[Dict[str, Any]]:
         """读取音色文件的元数据
 
         voice_file_path: resolve_voice_file() 返回的完整路径
@@ -284,11 +290,13 @@ class TTSBranch(ABC):
         self,
         voice_file_path: str,
         model_path: str,
+        gpu_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """从音色文件解码参考音频预览
 
         voice_file_path: .pt 文件的完整路径
         model_path: 用于解码的 Base 模型路径
+        gpu_id: 可选，指定用于解码的模型实例所在 GPU
         返回: {audio: base64, sr: int, duration: float} 或 None
         默认抛出 NotSupportedError，分支覆盖此方法以支持音色预览。
         """

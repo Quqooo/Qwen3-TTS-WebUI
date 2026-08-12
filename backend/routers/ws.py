@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from typing import Set
+from typing import Any, Awaitable, Dict, Optional, Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
@@ -21,7 +21,7 @@ _connections: Set[WebSocket] = set()
 _tracker_broadcast_lock = asyncio.Lock()
 
 
-def _tracker_status_listener(per_model, inference_total):
+def _tracker_status_listener(per_model: Any, inference_total: int) -> Awaitable[None]:
     return broadcast_tracker_status(per_model=per_model, inference_total=inference_total)
 
 
@@ -32,7 +32,7 @@ def _encode(data: dict) -> str:
 get_tracker().set_status_listener(_tracker_status_listener)
 
 
-async def _build_cache_message():
+async def _build_cache_message() -> str:
     try:
         cache = get_cache_manager()
         info = await cache.cached_models()
@@ -55,7 +55,7 @@ async def _build_cache_message():
         })
 
 
-async def _build_worker_message():
+async def _build_worker_message() -> str:
     try:
         cm = get_cache_manager()
         status = await cm.worker_status()
@@ -70,7 +70,7 @@ async def _build_worker_message():
         })
 
 
-def _build_backend_message():
+def _build_backend_message() -> str:
     """当前选中的后端分支及其可用选项。"""
     return _encode({
         "type": "backend",
@@ -95,7 +95,7 @@ async def _safe_send(ws: WebSocket, message: str) -> bool:
         return False
 
 
-async def _broadcast(message: str):
+async def _broadcast(message: str) -> None:
     if not _connections:
         return
     dead: Set[WebSocket] = set()
@@ -107,21 +107,21 @@ async def _broadcast(message: str):
         _connections.difference_update(dead)
 
 
-async def broadcast_cache_status():
+async def broadcast_cache_status() -> None:
     """向所有已连接客户端推送缓存状态。"""
     if not _connections:
         return
     await _broadcast(await _build_cache_message())
 
 
-async def broadcast_worker_status():
+async def broadcast_worker_status() -> None:
     """向所有已连接客户端推送 Worker 状态。"""
     if not _connections:
         return
     await _broadcast(await _build_worker_message())
 
 
-async def broadcast_backend_status():
+async def broadcast_backend_status() -> None:
     """向所有已连接客户端推送当前后端信息。"""
     if not _connections:
         return
@@ -129,9 +129,9 @@ async def broadcast_backend_status():
 
 
 def _build_tracker_message(
-    per_model=None,
-    inference_total=None,
-):
+    per_model: Optional[Dict[str, Dict[str, int]]] = None,
+    inference_total: Optional[int] = None,
+) -> str:
     tracker = get_tracker()
     if per_model is None:
         per_model = tracker.status()
@@ -149,7 +149,9 @@ def _build_tracker_message(
     })
 
 
-async def broadcast_tracker_status(*, per_model=None, inference_total=None):
+async def broadcast_tracker_status(
+    *, per_model: Optional[Dict[str, Dict[str, int]]] = None, inference_total: Optional[int] = None
+) -> None:
     """向所有已连接客户端推送推理任务状态快照。"""
     if not _connections:
         return
@@ -158,7 +160,7 @@ async def broadcast_tracker_status(*, per_model=None, inference_total=None):
 
 
 @router.websocket("/api/ws/cache")
-async def ws_cache(websocket: WebSocket):
+async def ws_cache(websocket: WebSocket) -> None:
     await websocket.accept()
     _connections.add(websocket)
 

@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .branches import get_branch
 from .branches.base import TTSBranch
+from .branches.worker_client import WorkerProcess
 from .branches.worker_pool import WorkerPool
 from .config import resolve_model_path, settings
 from .model_meta import cache_model_meta, detect_kind_from_config, invalidate_model_meta
@@ -45,7 +46,7 @@ class ModelLease:
         self._released = False
 
     @property
-    def worker(self):
+    def worker(self) -> Optional[WorkerProcess]:
         return self._manager.pool.worker_for_gpu(self.gpu)
 
     async def wait_stoppable(self) -> None:
