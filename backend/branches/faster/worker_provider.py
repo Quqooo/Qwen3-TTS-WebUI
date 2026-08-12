@@ -57,7 +57,7 @@ def _predictor_graph_options(values: Dict[str, Any] | None) -> Dict[str, Any]:
 class FasterQwenProvider(WorkerProvider):
     provider_id = "qwen-andimarafioti-faster"
     capabilities = ProviderCapabilities(
-        stream_voice_clone=True, stream_custom_voice=True, stream_voice_design=True,
+        stream_generate_voice_clone=True, stream_generate_custom_voice=True, stream_generate_voice_design=True,
         voice_prompt=True, voice_preview=True,
     )
 
@@ -150,7 +150,7 @@ class FasterQwenProvider(WorkerProvider):
             "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
             **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
-    def stream_voice_clone(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_voice_clone(self, model: Any, request: Dict[str, Any]):
         kwargs = self._clone_kwargs(model, request)
         kwargs.update(self._stream_options(request))
         parity_mode = (request.get("andimarafioti") or {}).get("parity_mode")
@@ -158,13 +158,13 @@ class FasterQwenProvider(WorkerProvider):
             kwargs["parity_mode"] = parity_mode
         yield from self._normalize_stream(_scoped_yield_from(model, "generate_voice_clone_streaming", kwargs))
 
-    def stream_custom_voice(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_custom_voice(self, model: Any, request: Dict[str, Any]):
         yield from self._normalize_stream(_scoped_yield_from(model, "generate_custom_voice_streaming", {
             "text": request["text"], "speaker": request["speaker"], "language": request.get("language", "Auto"),
             "instruct": request.get("instruct"), **self._stream_options(request),
             **_filtered(request.get("generation_params", {}), _GENERATION_OPTIONS)}))
 
-    def stream_voice_design(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_voice_design(self, model: Any, request: Dict[str, Any]):
         yield from self._normalize_stream(_scoped_yield_from(model, "generate_voice_design_streaming", {
             "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
             **self._stream_options(request),

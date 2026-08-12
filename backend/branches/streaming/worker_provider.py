@@ -67,7 +67,7 @@ def _scoped_yield_from(model: Any, method: str, kwargs: Dict[str, Any]):
 class StreamingQwenProvider(WorkerProvider):
     provider_id = "qwen-dffdeeq-streaming"
     capabilities = ProviderCapabilities(
-        stream_voice_clone=True, stream_custom_voice=True, stream_voice_design=True,
+        stream_generate_voice_clone=True, stream_generate_custom_voice=True, stream_generate_voice_design=True,
         voice_prompt=True, voice_preview=True,
     )
 
@@ -149,7 +149,7 @@ class StreamingQwenProvider(WorkerProvider):
             "text": request["text"], "instruct": request["instruct"], "language": request.get("language", "Auto"),
             **_generation_values(request)}))
 
-    def stream_voice_clone(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_voice_clone(self, model: Any, request: Dict[str, Any]):
         kwargs = {"text": request["text"], "language": request.get("language", "Auto"),
                   **self._stream_options(request),
                    **_generation_values(request, _STREAM_GENERATION_OPTIONS)}
@@ -163,7 +163,7 @@ class StreamingQwenProvider(WorkerProvider):
             raise ProviderValidationError("Base model requires voice_file or ref_audio")
         yield from _scoped_yield_from(model, "stream_generate_voice_clone", kwargs)
 
-    def stream_custom_voice(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_custom_voice(self, model: Any, request: Dict[str, Any]):
         input_ids = model._tokenize_texts([model._build_assistant_text(request["text"])])
         instruct = request.get("instruct") or ""
         instruct_ids = model._tokenize_texts([model._build_instruct_text(instruct)]) if instruct else None
@@ -173,7 +173,7 @@ class StreamingQwenProvider(WorkerProvider):
             **self._stream_options(request),
             **_filtered(request.get("generation_params", {}), _STREAM_GENERATION_OPTIONS)})
 
-    def stream_voice_design(self, model: Any, request: Dict[str, Any]):
+    def stream_generate_voice_design(self, model: Any, request: Dict[str, Any]):
         input_ids = model._tokenize_texts([model._build_assistant_text(request["text"])])
         instruct_ids = model._tokenize_texts([model._build_instruct_text(request["instruct"])])
         yield from _scoped_yield_from(model.model, "stream_generate_pcm", {

@@ -20,7 +20,7 @@ _logger = logging.getLogger("qwen-webui.branches")
 
 _branch_instance: Optional[TTSBranch] = None
 
-# 分支名 → 模块路径（如 ".QwenLM_Qwen3-TTS"）的映射，由 discover_branches() 构建
+# 分支名 → 模块路径（如 ".qwenlm"）的映射，由 discover_branches() 构建
 _BRANCH_MODULES: Dict[str, str] = {}
 _discovered = False
 

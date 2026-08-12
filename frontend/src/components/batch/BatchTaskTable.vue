@@ -3,7 +3,7 @@ import { ref, nextTick, onActivated } from "vue"
 import { useVirtualizer } from "@tanstack/vue-virtual"
 import { Download, GripVertical, Pause, Play, Settings, Square, Trash2, WandSparkles } from "@lucide/vue"
 import BatchWaveform from "./BatchWaveform.vue"
-import type { BatchRow } from "../../composables/useBatchTypes"
+import type { BatchRow } from "../../types/batch"
 
 const props = defineProps<{
   rows: BatchRow[]

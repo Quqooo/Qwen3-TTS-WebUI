@@ -36,7 +36,7 @@ const refTrimStart = ref(0)
 const refTrimEnd = ref(0)
 const refText = ref("")
 const instruct = ref("")
-const xvecOnly = ref(false)
+const xVectorOnly = ref(false)
 const voiceFiles = ref<{ value: string; label: string }[]>([])
 const selectedVoice = ref("")
 
@@ -75,7 +75,7 @@ const {
           reader.readAsDataURL(blob)
         })
       }
-      refTextValue = xvecOnly.value ? undefined : (refText.value || undefined)
+      refTextValue = xVectorOnly.value ? undefined : (refText.value || undefined)
     } else {
       voiceFileValue = selectedVoice.value || undefined
     }
@@ -84,7 +84,7 @@ const {
       ...(sourceMode.value === "upload"
         ? { ref_audio: refAudioDataUrl, ref_text: refTextValue }
         : { voice_file: voiceFileValue }),
-      x_vector_only: sourceMode.value === "upload" ? (xvecOnly.value || undefined) : undefined,
+      x_vector_only: sourceMode.value === "upload" ? (xVectorOnly.value || undefined) : undefined,
       instruct: modelStore.isFasterBranch ? (instruct.value.trim() || undefined) : undefined,
     }
   },
@@ -142,10 +142,10 @@ onMounted(async () => {
             enter-from-class="opacity-0 -translate-y-2"
             enter-to-class="opacity-100 translate-y-0"
           >
-            <div v-if="refAudioUrl || xvecOnly" class="space-y-2">
+            <div v-if="refAudioUrl || xVectorOnly" class="space-y-2">
               <label class="label">{{ $t('views.base.referenceText') }}</label>
               <AutoTextarea v-model="refText" :rows="2" :placeholder="$t('common.refTextPlaceholder')" />
-              <AppCheckbox v-model="xvecOnly" :label="$t('common.xVectorOnly')" />
+              <AppCheckbox v-model="xVectorOnly" :label="$t('common.xVectorOnly')" />
             </div>
           </Transition>
           <div v-if="modelStore.isFasterBranch" class="space-y-1.5">

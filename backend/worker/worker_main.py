@@ -391,9 +391,9 @@ class WorkerServer:
     async def stream(self, data: Dict[str, Any], writer: asyncio.StreamWriter) -> None:
         command = data["cmd"]
         mapping = {
-            "stream_generate_voice_clone": ("stream_voice_clone", self.state.provider.stream_voice_clone),
-            "stream_generate_custom_voice": ("stream_custom_voice", self.state.provider.stream_custom_voice),
-            "stream_generate_voice_design": ("stream_voice_design", self.state.provider.stream_voice_design),
+            "stream_generate_voice_clone": ("stream_generate_voice_clone", self.state.provider.stream_generate_voice_clone),
+            "stream_generate_custom_voice": ("stream_generate_custom_voice", self.state.provider.stream_generate_custom_voice),
+            "stream_generate_voice_design": ("stream_generate_voice_design", self.state.provider.stream_generate_voice_design),
         }
         capability, method = mapping[command]
         self._require_capability(capability)

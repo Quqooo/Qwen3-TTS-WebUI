@@ -20,9 +20,9 @@ StreamChunk = Tuple[AudioArray, int]
 
 @dataclass(frozen=True)
 class ProviderCapabilities:
-    stream_voice_clone: bool = False
-    stream_custom_voice: bool = False
-    stream_voice_design: bool = False
+    stream_generate_voice_clone: bool = False
+    stream_generate_custom_voice: bool = False
+    stream_generate_voice_design: bool = False
     voice_prompt: bool = True
     voice_preview: bool = True
 
@@ -83,13 +83,13 @@ class WorkerProvider(ABC):
     def generate_voice_design(self, model: Any, request: Dict[str, Any]) -> AudioResult:
         raise ProviderNotSupportedError(f"{self.provider_id} does not support voice design")
 
-    def stream_voice_clone(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
+    def stream_generate_voice_clone(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         raise ProviderNotSupportedError(f"{self.provider_id} does not support streaming voice clone")
 
-    def stream_custom_voice(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
+    def stream_generate_custom_voice(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         raise ProviderNotSupportedError(f"{self.provider_id} does not support streaming custom voice")
 
-    def stream_voice_design(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
+    def stream_generate_voice_design(self, model: Any, request: Dict[str, Any]) -> Iterator[StreamChunk]:
         raise ProviderNotSupportedError(f"{self.provider_id} does not support streaming voice design")
 
     def create_voice_clone_prompt(self, model: Any, request: Dict[str, Any]) -> List[Dict[str, Any]]:

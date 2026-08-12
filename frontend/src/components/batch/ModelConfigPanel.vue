@@ -23,7 +23,7 @@ export interface ModelConfig {
   voiceDescription: string
   voiceFile: string
   refText: string
-  xvecOnly: boolean
+  xVectorOnly: boolean
   cloneSource: "upload" | "voice_file"
   refAudioUrl: string
   refAudioName: string
@@ -184,7 +184,7 @@ function onKindChange(kind: ModelKind) {
 
 watch(() => [props.modelValue.refAudioUrl, props.modelValue.refText], () => {
   const on = props.modelValue.cloneSource === "upload" && !!props.modelValue.refAudioUrl && props.modelValue.refText.trim().length > 0
-  if (props.modelValue.xvecOnly !== !on) patch({ xvecOnly: !on })
+  if (props.modelValue.xVectorOnly !== !on) patch({ xVectorOnly: !on })
 })
 
 function handleAudioFile(file: File) {
@@ -197,7 +197,7 @@ function handleAudioFile(file: File) {
 
 function removeAudio() {
   if (props.modelValue.refAudioUrl) URL.revokeObjectURL(props.modelValue.refAudioUrl)
-  patch({ refAudioUrl: "", refAudioName: "", xvecOnly: false })
+  patch({ refAudioUrl: "", refAudioName: "", xVectorOnly: false })
 }
 
 function onUploadDragOver(ev: DragEvent) { ev.preventDefault() }

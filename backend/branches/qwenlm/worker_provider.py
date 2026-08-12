@@ -58,9 +58,9 @@ def _format_options(tts: Any) -> Dict[str, Any]:
 class OfficialQwenProvider(WorkerProvider):
     provider_id = "qwen-official"
     capabilities = ProviderCapabilities(
-        stream_voice_clone=False,
-        stream_custom_voice=False,
-        stream_voice_design=False,
+        stream_generate_voice_clone=False,
+        stream_generate_custom_voice=False,
+        stream_generate_voice_design=False,
         voice_prompt=True,
         voice_preview=True,
     )

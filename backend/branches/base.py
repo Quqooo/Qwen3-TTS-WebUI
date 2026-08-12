@@ -280,7 +280,7 @@ class TTSBranch(ABC):
         """
         raise NotSupportedError(f"{self.name} does not support voice saving")
 
-    async def voice_get_preview(
+    async def decode_voice_preview(
         self,
         voice_file_path: str,
         model_path: str,

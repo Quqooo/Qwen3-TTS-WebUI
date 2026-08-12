@@ -1,4 +1,4 @@
-import type { BatchRow } from "./useBatchTypes"
+import type { BatchRow } from "../types/batch"
 import type { SynthesisRequest } from "../types"
 import { useModelStore } from "../stores/model"
 
@@ -45,13 +45,13 @@ export function useBatchRequestBuilder() {
       } else if (row.cloneSource === "upload" && row.refAudioUrl) {
         request.ref_audio = await blobUrlToDataUrl(row.refAudioUrl)
         request.ref_text = row.refText || undefined
-        request.x_vector_only = row.xvecOnly || undefined
+        request.x_vector_only = row.xVectorOnly || undefined
       }
     } else if (row.modelKind === "custom_voice") {
       request.speaker = row.speaker
       request.instruct = row.instruct || undefined
     } else {
-      request.voice_description = row.voiceDescription || undefined
+      request.instruct = row.voiceDescription || undefined
     }
 
     return request

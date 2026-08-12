@@ -1,4 +1,4 @@
-export const en_us = {
+export const enUS = {
   common: {
     model: 'Model',
     language: 'Language',

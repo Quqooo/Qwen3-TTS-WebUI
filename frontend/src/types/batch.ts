@@ -10,7 +10,7 @@ export interface BatchRow {
   voiceDescription: string
   voiceFile: string
   refText: string
-  xvecOnly: boolean
+  xVectorOnly: boolean
   cloneSource: "upload" | "voice_file"
   refAudioUrl: string
   refAudioName: string

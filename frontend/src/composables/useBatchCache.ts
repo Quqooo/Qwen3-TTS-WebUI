@@ -1,9 +1,9 @@
 import { type Ref, watch } from "vue"
-import type { BatchRow } from "./useBatchTypes"
+import type { BatchRow } from "../types/batch"
 import { audioCacheDB } from "../utils/audioCacheDB"
+import { CACHE_VERSION, isSupportedCacheVersion, migrateCachedRow } from "../utils/batchVersionCompat"
 
 const STORAGE_KEY = "batch_cache_persist"
-export const CACHE_VERSION = 1
 
 export function useBatchCache(opts: {
   rows: Ref<BatchRow[]>
@@ -110,13 +110,13 @@ export function useBatchCache(opts: {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (!raw) return
       const data = JSON.parse(raw)
-      if (data.version === undefined || data.version < 1) return
+      if (!isSupportedCacheVersion(data.version)) return
       if (data.persistent !== true) return
       persistent.value = true
       const previousRows = rows.value
       rows.value = data.rows.map((r: any) => {
         const row: any = {
-          ...r,
+          ...migrateCachedRow(r),
           instruct: typeof r.instruct === "string" ? r.instruct : "",
           isPlaying: false,
           audioUrl: undefined,

@@ -400,7 +400,7 @@ class PooledWorkerBranch(TTSBranch):
             raise RuntimeError((resp or {}).get("error", "Failed to update voice metadata"))
         return resp["path"]
 
-    async def voice_get_preview(
+    async def decode_voice_preview(
         self, voice_file_path: str, model_path: str,
         gpu_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:

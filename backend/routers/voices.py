@@ -39,12 +39,12 @@ def _get_base_models_by_spk_dim(spk_dim: int) -> List[str]:
             continue
         try:
             with open(cfg_path, encoding="utf-8") as f:
-                cfg = json.load(f)
+                config = json.load(f)
         except (OSError, json.JSONDecodeError):
             continue
-        if str(cfg.get("tts_model_type", "")).strip().lower() != "base":
+        if str(config.get("tts_model_type", "")).strip().lower() != "base":
             continue
-        speaker_config = cfg.get("speaker_encoder_config")
+        speaker_config = config.get("speaker_encoder_config")
         if not isinstance(speaker_config, dict):
             continue
         try:
@@ -156,7 +156,7 @@ async def preview_voice_audio(body: VoiceAudioPreviewRequest):
 
     model_path = resolve_model_path(model_id)
     try:
-        result = await cm.branch.voice_get_preview(full_path, model_path, gpu_id=gpu)
+        result = await cm.branch.decode_voice_preview(full_path, model_path, gpu_id=gpu)
     except NotSupportedError as e:
         raise_error(status_code=400, detail="Operation not supported", debug=str(e))
     except RuntimeError as e:

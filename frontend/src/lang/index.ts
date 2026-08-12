@@ -1,26 +1,25 @@
 import { ref, type Ref } from 'vue'
-import { zh_cn } from './zh_cn'
-import { en_us } from './en_us'
+import { zhCN } from './zh-CN'
+import { enUS } from './en-US'
 
-export type TranslationDict = typeof zh_cn
+export type TranslationDict = typeof zhCN
 
 const LOCALE_KEY = 'qwen-tts:locale'
 
 const locales: Record<string, any> = {
-  zh_cn,
-  en_us,
+  'zh-CN': zhCN,
+  'en-US': enUS,
 }
 
 function detectBrowserLocale(): string {
-  if (typeof navigator === 'undefined') return 'en_us'
-  const lang = navigator.language?.toLowerCase().replace('-', '_') || ''
-  if (lang in locales) return lang
-  if (lang.startsWith('zh')) return 'zh_cn'
-  return 'en_us'
+  if (typeof navigator === 'undefined') return 'en-US'
+  const lang = navigator.language || ''
+  if (lang.startsWith('zh')) return 'zh-CN'
+  return 'en-US'
 }
 
 const currentLocale: Ref<string> = ref(localStorage.getItem(LOCALE_KEY) || detectBrowserLocale())
-const currentDict: Ref<TranslationDict> = ref(locales[currentLocale.value] || zh_cn)
+const currentDict: Ref<TranslationDict> = ref(locales[currentLocale.value] || zhCN)
 const localeVersion: Ref<number> = ref(0)
 
 function resolveKey(dict: TranslationDict, path: string): unknown {
@@ -61,8 +60,8 @@ export function getAvailableLocales(): string[] {
 }
 
 export const localeLabels: Record<string, string> = {
-  zh_cn: '中文',
-  en_us: 'English',
+  'zh-CN': '中文',
+  'en-US': 'English',
 }
 
 export function t(path: string, params?: Record<string, string | number>): string {

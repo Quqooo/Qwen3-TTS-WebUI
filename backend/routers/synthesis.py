@@ -80,7 +80,6 @@ class SynthesisRequest(BaseModel):
     kind: str = "base"
     speaker: Optional[str] = None
     instruct: Optional[str] = None
-    voice_description: Optional[str] = None
     ref_audio: Optional[str] = None
     ref_text: Optional[str] = None
     voice_file: Optional[str] = None
@@ -97,8 +96,8 @@ class SynthesisRequest(BaseModel):
         kind = self.kind
         if kind == "custom_voice" and not self.speaker:
             raise ValueError("speaker is required when kind=custom_voice")
-        if kind == "voice_design" and not self.voice_description:
-            raise ValueError("voice_description is required when kind=voice_design")
+        if kind == "voice_design" and not self.instruct:
+            raise ValueError("instruct is required when kind=voice_design")
         if kind != "base" and (self.ref_audio or self.ref_text or self.voice_file or self.x_vector_only):
             raise ValueError("ref_audio/ref_text/voice_file/x_vector_only are only allowed when kind=base")
         if self.ref_text and self.x_vector_only:
@@ -470,10 +469,10 @@ async def _handle_voice_design_synthesis(
 ):
     """处理 VoiceDesign 模型合成"""
     target_sr = body.output.sample_rate
-    instruct = body.voice_description or ""
+    instruct = body.instruct or ""
 
     if not instruct:
-        raise_error(status_code=400, detail="VoiceDesign model requires voice_description")
+        raise_error(status_code=400, detail="VoiceDesign model requires instruct")
 
     if body.streaming:
         return _stream_from_generator(

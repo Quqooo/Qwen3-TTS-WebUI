@@ -1,9 +1,9 @@
 import { ref, type Ref } from "vue"
 import JSZip from "jszip"
-import type { BatchRow } from "./useBatchTypes"
+import type { BatchRow } from "../types/batch"
 import { audioCacheDB } from "../utils/audioCacheDB"
 import { useToast } from "./useToast"
-import { CACHE_VERSION } from "./useBatchCache"
+import { isSupportedCacheVersion } from "../utils/batchVersionCompat"
 import { t } from "../lang"
 
 const STORAGE_KEY = "batch_cache_persist"
@@ -82,7 +82,7 @@ export function useBatchBackup({
       if (metadata) {
         metadataText = await metadata.async("text")
         const meta = JSON.parse(metadataText)
-        if (meta.version === undefined || meta.version < CACHE_VERSION) {
+        if (!isSupportedCacheVersion(meta.version)) {
           throw new Error(t("views.batch.moreConfigDialog.importVersionMismatch"))
         }
       }

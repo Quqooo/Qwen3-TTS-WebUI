@@ -28,7 +28,7 @@ const {
   synthesisText, generate, stop,
 } = useSynthesisSession({
   kind: "voice_design",
-  buildRequestExtras: () => ({ voice_description: voiceDescription.value || undefined }),
+  buildRequestExtras: () => ({ instruct: voiceDescription.value || undefined }),
 })
 
 const {

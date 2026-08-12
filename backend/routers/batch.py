@@ -42,17 +42,17 @@ _DEFAULT_MAX_SAMPLE_RATE = 192000
 
 
 def _effective_limits() -> dict:
-    cfg = settings.batch_composer or {}
+    config = settings.batch_composer or {}
     return {
-        "max_segments": cfg.get("max_segments", _DEFAULT_MAX_SEGMENTS),
-        "max_output_samples": cfg.get("max_output_samples", _DEFAULT_MAX_OUTPUT_SAMPLES),
-        "max_decoded_samples": cfg.get("max_decoded_samples", _DEFAULT_MAX_DECODED_SAMPLES),
-        "max_total_decoded_samples": cfg.get("max_total_decoded_samples", _DEFAULT_MAX_TOTAL_DECODED_SAMPLES),
-        "max_time_stretch_rate": cfg.get("max_time_stretch_rate", _DEFAULT_MAX_TIME_STRETCH_RATE),
-        "max_audio_chars": int(cfg.get("max_audio_mib", _DEFAULT_MAX_AUDIO_MIB) * 1024 * 1024),
-        "max_total_audio_chars": int(cfg.get("max_total_audio_mib", _DEFAULT_MAX_TOTAL_AUDIO_MIB) * 1024 * 1024),
-        "min_sample_rate": cfg.get("min_sample_rate", _DEFAULT_MIN_SAMPLE_RATE),
-        "max_sample_rate": cfg.get("max_sample_rate", _DEFAULT_MAX_SAMPLE_RATE),
+        "max_segments": config.get("max_segments", _DEFAULT_MAX_SEGMENTS),
+        "max_output_samples": config.get("max_output_samples", _DEFAULT_MAX_OUTPUT_SAMPLES),
+        "max_decoded_samples": config.get("max_decoded_samples", _DEFAULT_MAX_DECODED_SAMPLES),
+        "max_total_decoded_samples": config.get("max_total_decoded_samples", _DEFAULT_MAX_TOTAL_DECODED_SAMPLES),
+        "max_time_stretch_rate": config.get("max_time_stretch_rate", _DEFAULT_MAX_TIME_STRETCH_RATE),
+        "max_audio_chars": int(config.get("max_audio_mib", _DEFAULT_MAX_AUDIO_MIB) * 1024 * 1024),
+        "max_total_audio_chars": int(config.get("max_total_audio_mib", _DEFAULT_MAX_TOTAL_AUDIO_MIB) * 1024 * 1024),
+        "min_sample_rate": config.get("min_sample_rate", _DEFAULT_MIN_SAMPLE_RATE),
+        "max_sample_rate": config.get("max_sample_rate", _DEFAULT_MAX_SAMPLE_RATE),
     }
 
 

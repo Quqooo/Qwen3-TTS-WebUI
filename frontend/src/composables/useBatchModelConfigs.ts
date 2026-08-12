@@ -35,7 +35,7 @@ function createDefaultConfig(
     voiceDescription: "",
     voiceFile: voiceStore.voices[0]?.name ?? "",
     refText: "",
-    xvecOnly: false,
+    xVectorOnly: false,
     cloneSource: kind === "base" ? "voice_file" : "upload",
     refAudioUrl: "",
     refAudioName: "",

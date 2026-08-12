@@ -1,6 +1,6 @@
 import { ref, watch, type Ref } from "vue"
 import type { ModelConfig } from "../components/batch/ModelConfigPanel.vue"
-import type { BatchRow } from "./useBatchTypes"
+import type { BatchRow } from "../types/batch"
 import { parseSubtitleFile } from "../utils/subtitleParser"
 import { t } from "../lang"
 

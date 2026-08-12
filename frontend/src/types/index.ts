@@ -108,7 +108,6 @@ export interface SynthesisRequest {
   kind: ModelKind
   speaker?: string
   instruct?: string
-  voice_description?: string
   ref_audio?: string
   ref_text?: string
   voice_file?: string

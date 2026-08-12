@@ -1,5 +1,5 @@
 import { type Ref } from "vue"
-import type { BatchRow } from "./useBatchTypes"
+import type { BatchRow } from "../types/batch"
 import type { SynthesisRequest, ComposeSegment } from "../types"
 import { synthesisApi, composeApi, getBlobDuration } from "../api/synthesis"
 import { audioCacheDB } from "../utils/audioCacheDB"

@@ -1,5 +1,5 @@
 import { nextTick, ref, type Ref } from "vue"
-import type { BatchRow } from "./useBatchTypes"
+import type { BatchRow } from "../types/batch"
 
 export interface BatchRowInteractionOptions {
   rows: Ref<BatchRow[]>

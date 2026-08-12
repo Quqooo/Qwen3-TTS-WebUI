@@ -1,4 +1,4 @@
-export const zh_cn = {
+export const zhCN = {
   common: {
     model: '模型',
     language: '语言',

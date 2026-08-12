@@ -1,5 +1,5 @@
 import { reactive, ref, type Ref, watch } from "vue"
-import type { BatchRow } from "./useBatchTypes"
+import type { BatchRow } from "../types/batch"
 
 export function useBatchAudio(opts: {
   rows: Ref<BatchRow[]>

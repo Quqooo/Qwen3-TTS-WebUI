@@ -23,7 +23,7 @@ import { useBatchRequestBuilder } from "../composables/useBatchRequestBuilder"
 import { useBatchImport } from "../composables/useBatchImport"
 import { useBatchRowInteractions } from "../composables/useBatchRowInteractions"
 import { usePageKeepAlive } from "../composables/usePageKeepAlive"
-import type { BatchRow } from "../composables/useBatchTypes"
+import type { BatchRow } from "../types/batch"
 import { audioCacheDB } from "../utils/audioCacheDB"
 import { clearBatchWaveforms, deleteBatchWaveform } from "../utils/batchWaveformCache"
 import { useModelStore } from "../stores/model"
@@ -48,7 +48,7 @@ function createRow(text = ""): BatchRow {
     voiceDescription: "",
     voiceFile: firstVoice?.name ?? "",
     refText: "",
-    xvecOnly: false,
+    xVectorOnly: false,
     cloneSource: "voice_file",
     refAudioUrl: "",
     refAudioName: "",
@@ -302,7 +302,7 @@ function openBatchConfig() {
       voiceDescription: src.voiceDescription,
       voiceFile: src.voiceFile,
       refText: src.refText,
-      xvecOnly: src.xvecOnly,
+      xVectorOnly: src.xVectorOnly,
       cloneSource: src.cloneSource,
       refAudioUrl: src.refAudioUrl,
       refAudioName: src.refAudioName,
@@ -330,7 +330,7 @@ function applyBatchConfig(config: ModelConfig) {
       row.voiceDescription = config.voiceDescription
       row.voiceFile = config.voiceFile
       row.refText = config.refText
-      row.xvecOnly = config.xvecOnly
+      row.xVectorOnly = config.xVectorOnly
       row.cloneSource = config.cloneSource
       row.refAudioUrl = config.refAudioUrl
       row.refAudioName = config.refAudioName
@@ -389,7 +389,7 @@ function addRow(event?: MouseEvent) {
     row.voiceDescription = src.voiceDescription
     row.voiceFile = src.voiceFile
     row.refText = src.refText
-    row.xvecOnly = src.xvecOnly
+    row.xVectorOnly = src.xVectorOnly
     row.cloneSource = src.cloneSource
     row.refAudioUrl = src.refAudioUrl
     row.refAudioName = src.refAudioName
@@ -801,7 +801,7 @@ function onKeyDown(ev: KeyboardEvent) {
                 voiceDescription: activeRow.voiceDescription,
                 voiceFile: activeRow.voiceFile,
                 refText: activeRow.refText,
-                xvecOnly: activeRow.xvecOnly,
+                xVectorOnly: activeRow.xVectorOnly,
                 cloneSource: activeRow.cloneSource,
                 refAudioUrl: activeRow.refAudioUrl,
                 refAudioName: activeRow.refAudioName,
