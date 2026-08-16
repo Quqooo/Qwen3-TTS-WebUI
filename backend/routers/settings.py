@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, StrictInt, model_validator
 from ..config import parse_gpu_devices, settings, save_settings
 from ..branches import discover_branches
 from ..errors import raise_error
+from ..options import option_allows, options_payload
 
 _logger = logging.getLogger("qwen-webui.settings")
 
@@ -74,6 +75,20 @@ def _validate_branch(value: str) -> str:
     return value.strip()
 
 
+def _validate_option(name: str, value: str) -> None:
+    """校验下拉枚举值，校验与下发共用 backend/options.py 的注册表。"""
+    if not option_allows(name, value):
+        raise_error(status_code=400, detail=f"Invalid {name}", debug=f"{name}: {value}")
+
+
+def _settings_payload() -> dict:
+    """GET/PUT 共用的响应体：真实配置收进 settings，枚举选项收进 options。"""
+    return {
+        "settings": settings.to_dict(),
+        "options": options_payload(),
+    }
+
+
 class BatchComposerSettings(BaseModel):
     """批量音频合成的资源与输入限制。"""
     max_segments: StrictInt | None = Field(None, ge=1, le=100_000)
@@ -110,15 +125,32 @@ class PredictorGraphSettings(BaseModel):
     temperature: float | None = Field(None, gt=0.0, le=10.0)
 
 
-class AndimarafiotiSettings(BaseModel):
-    """andimarafioti/faster-qwen3-tts 分支专属配置。"""
+class FasterSettings(BaseModel):
+    """faster-qwen3-tts 分支专属配置。"""
     max_seq_len: StrictInt | None = Field(None, ge=_MIN_MAX_SEQ_LEN, le=_MAX_MAX_SEQ_LEN)
     predictor_graph: PredictorGraphSettings | None = None
+
+
+class QwenSettings(BaseModel):
+    """QwenLM/Qwen3-TTS 官方分支加载配置。"""
+    attn_implementation: str | None = None
+
+
+class StreamingSettings(BaseModel):
+    """dffdeeq/Qwen3-TTS-streaming 分支加载优化配置。"""
+    use_compile: bool | None = None
+    use_cuda_graphs: bool | None = None
+    compile_mode: str | None = None
+    use_fast_codebook: bool | None = None
+    compile_codebook_predictor: bool | None = None
+    compile_talker: bool | None = None
+    attn_implementation: str | None = None
 
 
 class SettingsUpdate(BaseModel):
     """设置更新请求体"""
     gpu_devices: str | None = None
+    dtype: str | None = None
     max_concurrent_models: int | None = Field(None, ge=_MIN_CONCURRENT, le=_MAX_CONCURRENT_MODELS)
     idle_unload_seconds: int | None = Field(None, ge=_MIN_IDLE_UNLOAD, le=_MAX_IDLE_UNLOAD)
     worker_idle_unload_seconds: int | None = Field(None, ge=_MIN_IDLE_UNLOAD, le=_MAX_IDLE_UNLOAD)
@@ -127,17 +159,16 @@ class SettingsUpdate(BaseModel):
     env_dir: str | None = None
     model_dir: str | None = None
     voice_dir: str | None = None
-    andimarafioti: AndimarafiotiSettings | None = None
+    faster: FasterSettings | None = None
+    qwenlm: QwenSettings | None = None
+    streaming: StreamingSettings | None = None
     batch_composer: BatchComposerSettings | None = None
 
 
 @router.get("/api/settings")
 async def get_settings() -> dict:
-    """获取当前服务端配置"""
-    return {
-        **settings.to_dict(),
-        "backend_branch_options": list(discover_branches().keys()),
-    }
+    """获取当前服务端配置与下拉枚举选项"""
+    return _settings_payload()
 
 
 @router.put("/api/settings")
@@ -150,6 +181,15 @@ async def update_settings(data: SettingsUpdate) -> dict:
             parse_gpu_devices(data_dict["gpu_devices"])
         except ValueError as e:
             raise_error(status_code=400, detail="Invalid gpu_devices format", debug=str(e))
+    if "dtype" in data_dict:
+        _validate_option("dtype", data_dict["dtype"])
+    if data.qwenlm is not None and data.qwenlm.attn_implementation is not None:
+        _validate_option("attn_implementation", data.qwenlm.attn_implementation)
+    if data.streaming is not None:
+        if data.streaming.attn_implementation is not None:
+            _validate_option("attn_implementation", data.streaming.attn_implementation)
+        if data.streaming.compile_mode is not None:
+            _validate_option("compile_mode", data.streaming.compile_mode)
     if "backend_branch" in data_dict:
         _validate_branch(data_dict["backend_branch"])
     if "project_dir" in data_dict:
@@ -170,10 +210,11 @@ async def update_settings(data: SettingsUpdate) -> dict:
 
     branch_changed = data.backend_branch is not None and data.backend_branch != old_branch
     project_changed = data.project_dir is not None and data.project_dir != old_project_dir
+    faster_data = data.faster
     max_seq_len_changed = (
-        data.andimarafioti is not None
-        and data.andimarafioti.max_seq_len is not None
-        and data.andimarafioti.max_seq_len != old_max_seq_len
+        faster_data is not None
+        and faster_data.max_seq_len is not None
+        and faster_data.max_seq_len != old_max_seq_len
     )
 
     if branch_changed or project_changed or max_seq_len_changed:
@@ -200,7 +241,4 @@ async def update_settings(data: SettingsUpdate) -> dict:
             asyncio.create_task(broadcast_cache_status())
             _logger.info("Evicted %d instances after lowering max_concurrent_models", len(evicted))
 
-    return {
-        **settings.to_dict(),
-        "backend_branch_options": list(discover_branches().keys()),
-    }
+    return _settings_payload()

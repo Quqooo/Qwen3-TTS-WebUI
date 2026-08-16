@@ -12,7 +12,7 @@ from backend.worker.provider import (
 )
 
 
-_LOAD_OPTIONS = {"device", "dtype", "local_files_only"}
+_LOAD_OPTIONS = {"device", "local_files_only"}
 _GENERATION_OPTIONS = {
     "max_new_tokens", "min_new_tokens", "temperature", "top_k", "top_p",
     "do_sample", "repetition_penalty", "non_streaming_mode", "seed",
@@ -69,14 +69,20 @@ class FasterQwenProvider(WorkerProvider):
 
     def load_model(self, model_path: str, model_kind: str,
                    load_options: Dict[str, Any], provider_options: Dict[str, Any]) -> Any:
-        import torch
+        if common.resolve_device() == "cpu":
+            raise ProviderValidationError(
+                "andimarafioti/faster-qwen3-tts requires CUDA (CUDA Graphs); "
+                "cpu device is not supported"
+            )
         from faster_qwen3_tts import FasterQwen3TTS
         kwargs = {
-            "device": "cuda", "dtype": torch.bfloat16,
-            "attn_implementation": "sdpa", "max_seq_len": 2048,
+            "device": "cuda",
+            "dtype": common.resolve_dtype(load_options.get("dtype", "auto")),
+            # 注意力实现硬编码为 SDPA：eager / flash_attention_2 等模式与 CUDA Graphs 不兼容。
+            "attn_implementation": "sdpa",
+            "max_seq_len": int(provider_options.get("max_seq_len", 2048)),
             "backend": "torch", "local_files_only": True,
         }
-        kwargs.update(_filtered(provider_options, {"max_seq_len"}))
         kwargs.update(_filtered(load_options, _LOAD_OPTIONS))
         model = FasterQwen3TTS.from_pretrained(model_path, **kwargs)
         predictor_options = _predictor_graph_options(provider_options.get("predictor_graph"))

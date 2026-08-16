@@ -9,6 +9,7 @@ import os
 from typing import Any, Dict
 
 from ..pooled_branch import PooledWorkerBranch
+from ...config import settings
 
 _logger = logging.getLogger("qwen-webui.branch.streaming")
 
@@ -26,11 +27,4 @@ class StreamingBranch(PooledWorkerBranch):
         super().__init__(_PROVIDER_FILE, _logger)
 
     def _load_provider_options(self) -> Dict[str, Any]:
-        return {
-            "use_compile": True,
-            "use_cuda_graphs": False,
-            "compile_mode": "reduce-overhead",
-            "use_fast_codebook": True,
-            "compile_codebook_predictor": True,
-            "compile_talker": True,
-        }
+        return dict(settings.streaming)

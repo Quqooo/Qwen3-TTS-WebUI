@@ -32,15 +32,20 @@ def settings_path() -> Path:
 def parse_gpu_devices(value: str) -> List[str]:
     """解析 GPU 设备列表配置，返回按优先级排序的设备 ID 列表。
 
-    语法：以空白或逗号分隔的设备项，每项为单个编号（"2"）或区间（"3-5"）。
-    例如 "2 0 3-5" → ["2", "0", "3", "4", "5"]，优先级按书写顺序。
-    留空时默认 ["0"]。重复编号仅保留第一次出现的位置。
+    语法：以空白或逗号分隔的设备项，每项为单个编号（"2"）、区间（"3-5"）
+    或 "cpu"（大小写不敏感，CPU 推理槽位）。
+    例如 "2 0 3-5 cpu" → ["2", "0", "3", "4", "5", "cpu"]，优先级按书写顺序。
+    留空时默认 ["0"]。重复设备仅保留第一次出现的位置。
     """
     if not value or not value.strip():
         return ["0"]
     devices: List[str] = []
     for token in re.split(r"[\s,]+", value.strip()):
         if not token:
+            continue
+        if token.lower() == "cpu":
+            if "cpu" not in devices:
+                devices.append("cpu")
             continue
         m = re.fullmatch(r"(\d+)(?:-(\d+))?", token)
         if not m:
@@ -66,6 +71,7 @@ class AppSettings:
     def __init__(self):
         # 模型缓存相关
         self.gpu_devices: str = ""             # GPU 设备列表，如 "2 0 3-5"，留空使用 0
+        self.dtype: str = "auto"               # 推理精度：auto | bf16 | fp16 | float32
         self.max_concurrent_models: int = 1    # 每 GPU 最多加载的不同模型数
         self.idle_unload_seconds: int = 600    # 模型空闲卸载时间（秒）
         self.worker_idle_unload_seconds: int = 600  # Worker 空闲停止时间（秒）
@@ -78,7 +84,7 @@ class AppSettings:
         self.voice_dir: str = ""        # 音色文件目录（可选，留空则使用 project_dir/voice）
 
         # andimarafioti/faster-qwen3-tts 分支专属配置
-        self.andimarafioti: dict = {
+        self.faster: dict = {
             "max_seq_len": 2048,
             "predictor_graph": {
                 "do_sample": True,
@@ -86,6 +92,22 @@ class AppSettings:
                 "top_p": 1.0,
                 "temperature": 0.9,
             },
+        }
+
+        # dffdeeq/Qwen3-TTS-streaming 分支专属配置
+        self.streaming: dict = {
+            "use_compile": True,
+            "use_cuda_graphs": False,
+            "compile_mode": "reduce-overhead",
+            "use_fast_codebook": True,
+            "compile_codebook_predictor": True,
+            "compile_talker": True,
+            "attn_implementation": "auto",
+        }
+
+        # QwenLM/Qwen3-TTS 官方分支专属配置
+        self.qwenlm: dict = {
+            "attn_implementation": "auto",
         }
 
         # 批量合成限制
@@ -109,7 +131,7 @@ class AppSettings:
     @property
     def max_seq_len(self) -> int:
         """兼容旧调用点的 Faster 静态 KV Cache 长度。"""
-        return int(self.andimarafioti["max_seq_len"])
+        return int(self.faster["max_seq_len"])
 
     def gpu_list(self) -> List[str]:
         """按优先级排序的可用 GPU 设备 ID 列表"""
@@ -119,6 +141,7 @@ class AppSettings:
         """将当前配置序列化为字典，用于 API 响应和 JSON 持久化"""
         return {
             "gpu_devices": self.gpu_devices,
+            "dtype": self.dtype,
             "max_concurrent_models": self.max_concurrent_models,
             "idle_unload_seconds": self.idle_unload_seconds,
             "worker_idle_unload_seconds": self.worker_idle_unload_seconds,
@@ -127,13 +150,16 @@ class AppSettings:
             "env_dir": self.env_dir,
             "model_dir": self.model_dir,
             "voice_dir": self.voice_dir,
-            "andimarafioti": self.andimarafioti,
+            "faster": self.faster,
+            "qwenlm": self.qwenlm,
+            "streaming": self.streaming,
             "batch_composer": self.batch_composer,
         }
 
     def update(self, data: dict) -> None:
         """用传入的字典更新配置，仅更新字典中存在的键"""
         for key in (
+            "dtype",
             "gpu_devices",
             "max_concurrent_models",
             "idle_unload_seconds",
@@ -147,19 +173,28 @@ class AppSettings:
             if key in data:
                 setattr(self, key, data[key])
 
-        andimarafioti = data.get("andimarafioti")
-        if isinstance(andimarafioti, dict):
-            predictor_graph = andimarafioti.get("predictor_graph")
-            merged = {**self.andimarafioti, **andimarafioti}
+        faster = data.get("faster")
+        if isinstance(faster, dict):
+            predictor_graph = faster.get("predictor_graph")
+            merged = {**self.faster, **faster}
+            # 注意力实现固定为 SDPA（其他模式与 CUDA Graphs 不兼容），
+            # 丢弃旧版 settings.json 中遗留的配置项。
+            merged.pop("attn_implementation", None)
             if isinstance(predictor_graph, dict):
                 merged["predictor_graph"] = {
-                    **self.andimarafioti["predictor_graph"],
+                    **self.faster["predictor_graph"],
                     **predictor_graph,
                 }
-            self.andimarafioti = merged
+            self.faster = merged
         elif "max_seq_len" in data:
             # 兼容旧版 settings.json；下次保存时自动迁移到嵌套结构。
-            self.andimarafioti["max_seq_len"] = data["max_seq_len"]
+            self.faster["max_seq_len"] = data["max_seq_len"]
+
+        if "streaming" in data and isinstance(data["streaming"], dict):
+            self.streaming = {**self.streaming, **data["streaming"]}
+
+        if "qwenlm" in data and isinstance(data["qwenlm"], dict):
+            self.qwenlm = {**self.qwenlm, **data["qwenlm"]}
 
         if "batch_composer" in data and isinstance(data["batch_composer"], dict):
             self.batch_composer = {**self.batch_composer, **data["batch_composer"]}

@@ -2,7 +2,7 @@ import { defineStore } from "pinia"
 import { ref, computed } from "vue"
 import type { ModelInfo, ModelKind, ModelCacheStatus, WorkerStatus, TrackerStatus } from "../types"
 import { modelsApi } from "../api/models"
-import { settingsApi } from "../api/settings"
+import { resolveSettings, settingsApi } from "../api/settings"
 import { createCacheWebSocket } from "../api/ws"
 
 export const useModelStore = defineStore("model", () => {
@@ -72,7 +72,7 @@ export const useModelStore = defineStore("model", () => {
         availableModels.value = modelsResult.value.models
       }
       if (settingsResult.status === "fulfilled") {
-        backendBranch.value = settingsResult.value.backend_branch
+        backendBranch.value = resolveSettings(settingsResult.value).settings.backend_branch
       }
     } finally {
       loading.value = false

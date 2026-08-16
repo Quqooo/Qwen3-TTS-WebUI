@@ -25,7 +25,8 @@ class WorkerProcess:
     """Manage a unified worker and its main, detached, and stream connections.
 
     Each worker is bound to a single GPU via CUDA_VISIBLE_DEVICES injected
-    into the subprocess environment.
+    into the subprocess environment. The "cpu" slot hides every CUDA device
+    and marks the worker as CPU-only via QWEN_WEBUI_DEVICE.
     """
 
     def __init__(
@@ -172,7 +173,12 @@ class WorkerProcess:
         self._stderr_tail.clear()
         self._startup_stdout.clear()
         env = dict(os.environ)
-        env["CUDA_VISIBLE_DEVICES"] = self.gpu_id
+        if self.gpu_id == "cpu":
+            env["CUDA_VISIBLE_DEVICES"] = ""
+            env["QWEN_WEBUI_DEVICE"] = "cpu"
+        else:
+            env["CUDA_VISIBLE_DEVICES"] = self.gpu_id
+            env["QWEN_WEBUI_DEVICE"] = "cuda"
         try:
             self._process = subprocess.Popen(
                 [

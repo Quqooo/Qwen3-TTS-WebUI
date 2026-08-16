@@ -4,8 +4,11 @@ from __future__ import annotations
 import base64
 import contextlib
 import hashlib
+import logging
 import os
 from typing import Any, Dict, Iterator, List, Optional, Tuple
+
+_logger = logging.getLogger("qwen-webui.worker.common")
 
 
 def _numpy() -> Any:
@@ -84,6 +87,73 @@ def deserialize_tensor(value: Dict[str, Any]) -> Any:
     torch = _torch()
     arr = np.frombuffer(base64.b64decode(value["data"]), dtype=np.dtype(value["dtype"]))
     return torch.from_numpy(arr.reshape(value["shape"]).copy())
+
+
+def resolve_device() -> str:
+    """当前 Worker 的设备类型："cpu" 或 "cuda"（由主进程注入的环境变量决定）。"""
+    return "cpu" if os.environ.get("QWEN_WEBUI_DEVICE") == "cpu" else "cuda"
+
+
+def resolve_device_map() -> str:
+    """HuggingFace device_map 参数：CPU 槽位返回 "cpu"，GPU 槽位返回 "cuda:0"。"""
+    return "cpu" if resolve_device() == "cpu" else "cuda:0"
+
+
+def resolve_dtype(value: Any) -> Any:
+    """将 dtype 配置（"auto"/"bf16"/"fp16"/"float32" 或 torch.dtype）解析为 torch dtype。
+
+    "auto" 优先 bf16，其次 fp16，最后 float32。
+    """
+    torch = _torch()
+    if isinstance(value, torch.dtype):
+        return value
+    name = str(value or "auto").strip().lower()
+    if name == "auto":
+        if torch.cuda.is_available():
+            return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        mps = getattr(torch.backends, "mps", None)
+        if mps is not None and mps.is_available():
+            return torch.float16
+        return torch.float32
+    mapping = {
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+        "fp32": torch.float32,
+    }
+    if name not in mapping:
+        raise ValueError(f"Unsupported dtype: {value!r}")
+    return mapping[name]
+
+
+def resolve_attn_implementation(value: Any) -> str:
+    """解析注意力实现配置："auto" 时优先 flash_attention_2，未安装则回退 sdpa。
+
+    CPU 设备上 flash-attn 不可用：auto 与显式的 flash_attention_2/3 均回退 sdpa
+    （含用户显式配置的 flash_attention_2/3，直接透传会导致 CPU 加载失败）。
+    """
+    name = str(value or "auto").strip().lower()
+    if resolve_device() == "cpu":
+        if name in ("", "auto", "flash_attention_2", "flash_attention_3"):
+            if name.startswith("flash_attention"):
+                _logger.info(
+                    "attn_implementation %s is unavailable on CPU, falling back to sdpa",
+                    name,
+                )
+            return "sdpa"
+        return name
+    if name in ("", "auto"):
+        try:
+            import importlib.util
+
+            if importlib.util.find_spec("flash_attn") is not None:
+                return "flash_attention_2"
+        except Exception:
+            pass
+        return "sdpa"
+    return name
 
 
 def next_stream_item(generator: Any) -> Tuple[bool, Any]:

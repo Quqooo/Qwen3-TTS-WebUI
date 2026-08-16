@@ -118,10 +118,10 @@
     @apply border rounded-xl p-4 bg-card;
   }
   .label {
-    @apply text-xs font-medium text-muted-foreground;
+    @apply text-xs font-medium text-muted-foreground block;
   }
   .label-sm {
-    @apply text-xs text-muted-foreground;
+    @apply text-xs text-muted-foreground block;
   }
   .btn-segment {
     @apply flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150;

@@ -2,14 +2,14 @@
 import { ref, computed, onMounted, onActivated } from "vue"
 import { Save, FolderOpen, Volume2, ExternalLink, XCircle, RefreshCw, Server, SlidersHorizontal, User, Shield, Settings2, Gauge } from "@lucide/vue"
 import type { ModelKind, GenerationParamsConfig as GenParams } from "../types"
-import type { BatchComposerSettings, PredictorGraphSettings } from "../api/settings"
-import { settingsApi } from "../api/settings"
+import { settingsApi, resolveSettings, type BatchComposerSettings, type PredictorGraphSettings, type QwenSettings, type ServerSettings, type SettingsOptions, type StreamingSettings } from "../api/settings"
 import { modelsApi } from "../api/models"
 import { api } from "../api/client"
 import { useModelStore } from "../stores/model"
 import { useUserConfig } from "../composables/useUserConfig"
 import { useToast } from "../composables/useToast"
 import AppSelect from "../components/common/AppSelect.vue"
+import AppSwitch from "../components/common/AppSwitch.vue"
 import AppSlider from "../components/common/AppSlider.vue"
 import Skeleton from "../components/common/Skeleton.vue"
 import { t } from "../lang"
@@ -18,17 +18,19 @@ type SettingsSection = "server" | "batch" | "user"
 
 interface SettingsData {
   gpuDevices: string
+  dtype: string
   maxConcurrent: number
   idleTimeout: number
   workerIdleTimeout: number
   backendBranch: string
-  backendBranchOptions: string[]
   projectDir: string
   envDir: string
   modelDir: string
   voiceDir: string
   maxSeqLen: number
   predictorGraph: PredictorGraphSettings
+  qwenlm: QwenSettings
+  streaming: StreamingSettings
   batchComposer: BatchComposerSettings
 }
 
@@ -51,6 +53,36 @@ const DEFAULT_BATCH: BatchComposerSettings = {
   max_sample_rate: 192000,
 }
 
+const DEFAULT_STREAMING: StreamingSettings = {
+  use_compile: true,
+  use_cuda_graphs: false,
+  compile_mode: "reduce-overhead",
+  use_fast_codebook: true,
+  compile_codebook_predictor: true,
+  compile_talker: true,
+  attn_implementation: "auto",
+}
+
+const DEFAULT_QWEN: QwenSettings = {
+  attn_implementation: "auto",
+}
+
+const OPTION_LABELS: Partial<Record<keyof SettingsOptions, Record<string, string>>> = {
+  dtype: {
+    auto: "Auto",
+    bf16: "BF16",
+    fp16: "FP16",
+    float32: "FP32",
+  },
+  attn_implementation: {
+    sdpa: "SDPA",
+    eager: "Eager",
+    flash_attention_2: "Flash Attention 2",
+    flash_attention_3: "Flash Attention 3",
+    auto: "Auto",
+  },
+}
+
 let settingsCache: SettingsData | null = null
 const { defaultParams, globalVolume } = useUserConfig()
 const modelStore = useModelStore()
@@ -62,17 +94,25 @@ const savingText = ref(false)
 let savingTimer: ReturnType<typeof setTimeout> | undefined
 const activeSection = ref<SettingsSection>("server")
 const gpuDevices = ref("")
+const dtype = ref("auto")
 const maxConcurrent = ref(1)
 const idleTimeout = ref(600)
 const workerIdleTimeout = ref(600)
 const backendBranch = ref("")
-const backendBranchOptions = ref<string[]>([])
+const options = ref<SettingsOptions>({
+  backend_branch: [],
+  dtype: [],
+  attn_implementation: [],
+  compile_mode: [],
+})
 const projectDir = ref("")
 const envDir = ref("")
 const modelDir = ref("")
 const voiceDir = ref("")
 const maxSeqLen = ref(2048)
 const predictorGraph = ref<PredictorGraphSettings>({ ...DEFAULT_PREDICTOR_GRAPH })
+const qwenlm = ref<QwenSettings>({ ...DEFAULT_QWEN })
+const streaming = ref<StreamingSettings>({ ...DEFAULT_STREAMING })
 const batchComposer = ref<BatchComposerSettings>({ ...DEFAULT_BATCH })
 const selectedKind = ref<ModelKind>("base")
 
@@ -82,8 +122,20 @@ const sections = computed(() => [
   { id: "user" as const, label: t("views.settings.sectionUser"), hint: t("views.settings.sectionUserHint"), icon: User },
 ])
 const currentSection = computed(() => sections.value.find(section => section.id === activeSection.value) ?? sections.value[0])
-const branchSelectOptions = computed(() => backendBranchOptions.value.map(value => ({ value, label: value })))
+function selectOptions(key: keyof SettingsOptions) {
+  const labels = OPTION_LABELS[key] ?? {}
+  return options.value[key].map(value => ({ value, label: labels[value] ?? value }))
+}
+const branchSelectOptions = computed(() => selectOptions("backend_branch"))
 const isFasterBranch = computed(() => backendBranch.value === "andimarafioti/faster-qwen3-tts")
+const usesCpuSlot = computed(() =>
+  gpuDevices.value.split(/[\s,]+/).some(token => token.toLowerCase() === "cpu"),
+)
+const isStreamingBranch = computed(() => backendBranch.value === "dffdeeq/Qwen3-TTS-streaming")
+const isQwenBranch = computed(() => backendBranch.value === "QwenLM/Qwen3-TTS")
+const dtypeSelectOptions = computed(() => selectOptions("dtype"))
+const attnImplementationSelectOptions = computed(() => selectOptions("attn_implementation"))
+const compileModeSelectOptions = computed(() => selectOptions("compile_mode"))
 const cacheRows = computed(() => {
   const gpus = modelStore.trackerStatus.inference_gpus
   return [...modelStore.cacheStatus.loaded]
@@ -102,17 +154,19 @@ const kindOptions = computed(() => [
 
 function applySettings(data: SettingsData) {
   gpuDevices.value = data.gpuDevices
+  dtype.value = data.dtype
   maxConcurrent.value = data.maxConcurrent
   idleTimeout.value = data.idleTimeout
   workerIdleTimeout.value = data.workerIdleTimeout
   backendBranch.value = data.backendBranch
-  backendBranchOptions.value = data.backendBranchOptions
   projectDir.value = data.projectDir
   envDir.value = data.envDir
   modelDir.value = data.modelDir
   voiceDir.value = data.voiceDir
   maxSeqLen.value = data.maxSeqLen
   predictorGraph.value = { ...DEFAULT_PREDICTOR_GRAPH, ...data.predictorGraph }
+  qwenlm.value = { ...DEFAULT_QWEN, ...data.qwenlm }
+  streaming.value = { ...DEFAULT_STREAMING, ...data.streaming }
   batchComposer.value = { ...DEFAULT_BATCH, ...data.batchComposer }
 }
 
@@ -187,6 +241,7 @@ async function saveSettings() {
   try {
     const res = await settingsApi.update({
       gpu_devices: gpuDevices.value,
+      dtype: dtype.value,
       max_concurrent_models: maxConcurrent.value,
       idle_unload_seconds: idleTimeout.value,
       worker_idle_unload_seconds: workerIdleTimeout.value,
@@ -195,14 +250,18 @@ async function saveSettings() {
       env_dir: envDir.value,
       model_dir: modelDir.value,
       voice_dir: voiceDir.value,
-      andimarafioti: {
+      faster: {
         max_seq_len: maxSeqLen.value,
         predictor_graph: { ...predictorGraph.value },
       },
+      qwenlm: { ...qwenlm.value },
+      streaming: { ...streaming.value },
       batch_composer: { ...batchComposer.value },
     })
-    modelStore.setBackendBranch(res.backend_branch)
-    settingsCache = fromResponse(res)
+    const resolved = resolveSettings(res)
+    modelStore.setBackendBranch(resolved.settings.backend_branch)
+    options.value = resolved.options
+    settingsCache = fromResponse(resolved.settings)
     toastSuccess(t("views.settings.saved"))
   } catch {
   } finally {
@@ -212,20 +271,22 @@ async function saveSettings() {
   }
 }
 
-function fromResponse(data: Awaited<ReturnType<typeof settingsApi.get>>): SettingsData {
+function fromResponse(data: ServerSettings): SettingsData {
   return {
     gpuDevices: data.gpu_devices ?? "0",
+    dtype: data.dtype ?? "auto",
     maxConcurrent: data.max_concurrent_models,
     idleTimeout: data.idle_unload_seconds,
     workerIdleTimeout: data.worker_idle_unload_seconds ?? 600,
     backendBranch: data.backend_branch,
-    backendBranchOptions: data.backend_branch_options,
     projectDir: data.project_dir,
     envDir: data.env_dir,
     modelDir: data.model_dir,
     voiceDir: data.voice_dir,
-    maxSeqLen: data.andimarafioti?.max_seq_len ?? 2048,
-    predictorGraph: { ...DEFAULT_PREDICTOR_GRAPH, ...data.andimarafioti?.predictor_graph },
+    maxSeqLen: data.faster?.max_seq_len ?? 2048,
+    predictorGraph: { ...DEFAULT_PREDICTOR_GRAPH, ...data.faster?.predictor_graph },
+    qwenlm: { ...DEFAULT_QWEN, ...data.qwenlm },
+    streaming: { ...DEFAULT_STREAMING, ...data.streaming },
     batchComposer: { ...DEFAULT_BATCH, ...data.batch_composer },
   }
 }
@@ -259,17 +320,19 @@ function onConcurrentWheel(event: WheelEvent) {
 function settingsSnapshot(): SettingsData {
   return {
     gpuDevices: gpuDevices.value,
+    dtype: dtype.value,
     maxConcurrent: maxConcurrent.value,
     idleTimeout: idleTimeout.value,
     workerIdleTimeout: workerIdleTimeout.value,
     backendBranch: backendBranch.value,
-    backendBranchOptions: backendBranchOptions.value,
     projectDir: projectDir.value,
     envDir: envDir.value,
     modelDir: modelDir.value,
     voiceDir: voiceDir.value,
     maxSeqLen: maxSeqLen.value,
     predictorGraph: { ...predictorGraph.value },
+    qwenlm: { ...qwenlm.value },
+    streaming: { ...streaming.value },
     batchComposer: { ...batchComposer.value },
   }
 }
@@ -284,8 +347,10 @@ async function loadSettings() {
   const showLoading = firstLoad
   if (showLoading) loading.value = true
   try {
-    const [settings] = await Promise.all([settingsApi.get(), modelStore.refreshCacheStatus(), refreshInferenceStatus()])
+    const [res] = await Promise.all([settingsApi.get(), modelStore.refreshCacheStatus(), refreshInferenceStatus()])
+    const { settings, options: freshOptions } = resolveSettings(res)
     const fresh = fromResponse(settings)
+    options.value = freshOptions
     settingsCache = fresh
     if (!settingsEqual(settingsSnapshot(), fresh)) applySettings(fresh)
   } catch {
@@ -357,11 +422,11 @@ onActivated(() => {
           </div>
 
           <div class="flex-1 min-h-0 overflow-y-auto px-5 py-5">
-            <div v-if="activeSection === 'server'" class="flex flex-col xl:flex-row gap-10 items-start">
-              <section class="flex-1 min-w-0 space-y-4">
+            <div v-if="activeSection === 'server'" class="grid grid-cols-1 xl:grid-cols-[1fr_2fr] gap-10 items-start">
+              <section class="min-w-0 space-y-4">
                 <h3 class="text-sm font-medium flex items-center gap-2"><Server class="w-4 h-4 text-muted-foreground" /> {{ $t("views.settings.modelCache") }}</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
-                  <div class="space-y-1.5"><label for="settings-gpu-devices" class="label-sm">{{ $t("views.settings.gpuDevices") }}</label><input id="settings-gpu-devices" name="gpu_devices" v-model="gpuDevices" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.gpuDevicesPlaceholder')" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.gpuDevicesHint") }}</p></div>
+                  <div class="space-y-1.5"><label for="settings-gpu-devices" class="label-sm">{{ $t("views.settings.gpuDevices") }}</label><input id="settings-gpu-devices" name="gpu_devices" v-model="gpuDevices" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.gpuDevicesPlaceholder')" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.gpuDevicesHint") }}</p><p v-if="isFasterBranch && usesCpuSlot" class="text-[10px] text-destructive">{{ $t("views.settings.gpuDevicesCpuFasterHint") }}</p></div>
                   <div class="space-y-1.5"><label for="settings-max-concurrent" class="label-sm">{{ $t("views.settings.maxConcurrent") }}</label><input id="settings-max-concurrent" name="max_concurrent_models" v-model.number="maxConcurrent" type="number" min="1" max="16" class="w-full px-3 py-2 text-sm" @wheel="onConcurrentWheel" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.maxConcurrentHint") }}</p></div>
                   <div class="space-y-1.5"><label for="settings-idle-unload" class="label-sm">{{ $t("views.settings.idleUnload") }}</label><input id="settings-idle-unload" name="idle_unload_seconds" v-model.number="idleTimeout" type="number" min="0" max="86400" step="60" class="w-full px-3 py-2 text-sm" /></div>
                   <div class="space-y-1.5"><label for="settings-worker-idle-unload" class="label-sm">{{ $t("views.settings.workerIdleUnload") }}</label><input id="settings-worker-idle-unload" name="worker_idle_unload_seconds" v-model.number="workerIdleTimeout" type="number" min="0" max="86400" step="60" class="w-full px-3 py-2 text-sm" /></div>
@@ -392,7 +457,7 @@ onActivated(() => {
                             <span class="flex items-center gap-2 min-w-0 text-left"><button class="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors hover:text-destructive" v-tooltip="$t('views.settings.unloadModel')" @click="unloadModel(row.id)"><XCircle class="w-4 h-4" /></button><span class="truncate font-mono" :title="row.id">{{ row.id }}</span></span>
                           </td>
                           <td class="px-2 text-center font-mono tabular-nums border-l border-l-border/25">{{ row.count }}</td>
-                          <td class="px-2 text-center font-mono text-muted-foreground border-l border-l-border/25">GPU {{ row.gpu }}</td>
+                          <td class="px-2 text-center font-mono text-muted-foreground border-l border-l-border/25">{{ row.gpu === "cpu" ? "CPU" : "GPU " + row.gpu }}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -400,28 +465,45 @@ onActivated(() => {
                 </div>
               </section>
 
-              <section class="flex-1 min-w-0 space-y-4">
+              <section class="min-w-0 space-y-4">
                 <div class="space-y-1"><h3 class="text-sm font-medium flex items-center gap-2"><FolderOpen class="w-4 h-4 text-muted-foreground" /> {{ $t("views.settings.qwenBackend") }}</h3><p class="text-xs text-muted-foreground">{{ $t("views.settings.qwenBackendHint") }}</p></div>
-                <div class="space-y-4">
-                  <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.branch") }}</div><AppSelect v-model="backendBranch" :options="branchSelectOptions" /></div>
-                  <div class="space-y-1.5"><label for="settings-project-dir" class="label-sm">{{ $t("views.settings.projectDir") }}</label><input id="settings-project-dir" name="project_dir" v-model="projectDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.projectDirPlaceholder')" /></div>
-                  <div class="space-y-1.5"><label for="settings-env-dir" class="label-sm">{{ $t("views.settings.envDir") }}</label><input id="settings-env-dir" name="env_dir" v-model="envDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.envDirPlaceholder')" /></div>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 items-start">
+                  <div class="space-y-4">
+                    <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.branch") }}</div><AppSelect v-model="backendBranch" :options="branchSelectOptions" /></div>
+                    <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.dtype") }}</div><AppSelect v-model="dtype" :options="dtypeSelectOptions" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.dtypeHint") }}</p></div>
+                    <div class="border-t border-border"></div>
+                    <div class="space-y-1.5"><label for="settings-project-dir" class="label-sm">{{ $t("views.settings.projectDir") }}</label><input id="settings-project-dir" name="project_dir" v-model="projectDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.projectDirPlaceholder')" /></div>
+                    <div class="space-y-1.5"><label for="settings-env-dir" class="label-sm">{{ $t("views.settings.envDir") }}</label><input id="settings-env-dir" name="env_dir" v-model="envDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.envDirPlaceholder')" /></div>
                     <div class="space-y-1.5"><label for="settings-model-dir" class="label-sm">{{ $t("views.settings.modelDir") }}</label><input id="settings-model-dir" name="model_dir" v-model="modelDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.modelDirPlaceholder')" /></div>
                     <div class="space-y-1.5"><label for="settings-voice-dir" class="label-sm">{{ $t("views.settings.voiceDir") }}</label><input id="settings-voice-dir" name="voice_dir" v-model="voiceDir" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.voiceDirPlaceholder')" /></div>
                   </div>
-                  <template v-if="isFasterBranch">
-                    <div class="space-y-1.5"><label for="settings-max-seq-len" class="label-sm">{{ $t("views.settings.maxSeqLen") }}</label><input id="settings-max-seq-len" name="andimarafioti_max_seq_len" v-model.number="maxSeqLen" type="number" min="1" max="32767" step="1" class="w-full px-3 py-2 text-sm" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.maxSeqLenHint") }}</p></div>
+                  <div class="space-y-4">
+                    <template v-if="isFasterBranch">
+                    <div class="space-y-1.5"><label for="settings-max-seq-len" class="label-sm">{{ $t("views.settings.maxSeqLen") }}</label><input id="settings-max-seq-len" name="faster_max_seq_len" v-model.number="maxSeqLen" type="number" min="1" max="32767" step="1" class="w-full px-3 py-2 text-sm" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.maxSeqLenHint") }}</p></div>
                     <div class="space-y-2 border-t pt-4">
                       <div class="space-y-1"><h4 class="text-xs font-medium">{{ $t("views.settings.predictorGraph") }}</h4><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.predictorGraphHint") }}</p></div>
                       <div class="grid grid-cols-2 gap-x-4 gap-y-3">
                         <div class="min-w-0 space-y-1.5"><div class="label-sm">{{ $t("views.settings.predictorDoSample") }}</div><AppSelect :model-value="String(predictorGraph.do_sample)" :options="samplingOptions" @update:model-value="predictorGraph.do_sample = $event === 'true'" /></div>
-                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-top-k" class="block label-sm">{{ $t("views.settings.predictorTopK") }}</label><input id="settings-predictor-top-k" name="andimarafioti_predictor_graph_top_k" v-model.number="predictorGraph.top_k" type="number" min="0" max="32767" step="1" class="w-full px-3 py-2 text-sm" /></div>
-                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-top-p" class="block label-sm">{{ $t("views.settings.predictorTopP") }}</label><input id="settings-predictor-top-p" name="andimarafioti_predictor_graph_top_p" v-model.number="predictorGraph.top_p" type="number" min="0.000001" max="1" step="any" class="w-full px-3 py-2 text-sm" /></div>
-                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-temperature" class="block label-sm">{{ $t("views.settings.predictorTemperature") }}</label><input id="settings-predictor-temperature" name="andimarafioti_predictor_graph_temperature" v-model.number="predictorGraph.temperature" type="number" min="0.000001" max="10" step="any" class="w-full px-3 py-2 text-sm" /></div>
+                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-top-k" class="block label-sm">{{ $t("views.settings.predictorTopK") }}</label><input id="settings-predictor-top-k" name="faster_predictor_graph_top_k" v-model.number="predictorGraph.top_k" type="number" min="0" max="32767" step="1" class="w-full px-3 py-2 text-sm" /></div>
+                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-top-p" class="block label-sm">{{ $t("views.settings.predictorTopP") }}</label><input id="settings-predictor-top-p" name="faster_predictor_graph_top_p" v-model.number="predictorGraph.top_p" type="number" min="0.000001" max="1" step="any" class="w-full px-3 py-2 text-sm" /></div>
+                        <div class="min-w-0 space-y-1.5"><label for="settings-predictor-temperature" class="block label-sm">{{ $t("views.settings.predictorTemperature") }}</label><input id="settings-predictor-temperature" name="faster_predictor_graph_temperature" v-model.number="predictorGraph.temperature" type="number" min="0.000001" max="10" step="any" class="w-full px-3 py-2 text-sm" /></div>
                       </div>
                     </div>
                   </template>
+                    <template v-else-if="isStreamingBranch">
+                      <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.useCompile") }}</div><AppSwitch v-model="streaming.use_compile" /></div>
+                      <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.useCudaGraphs") }}</div><AppSwitch v-model="streaming.use_cuda_graphs" /></div>
+                      <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.compileMode") }}</div><AppSelect v-model="streaming.compile_mode" :options="compileModeSelectOptions" /></div>
+                      <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.useFastCodebook") }}</div><AppSwitch v-model="streaming.use_fast_codebook" /></div>
+                      <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.compileCodebookPredictor") }}</div><AppSwitch v-model="streaming.compile_codebook_predictor" /></div>
+                      <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.compileTalker") }}</div><AppSwitch v-model="streaming.compile_talker" /></div>
+                      <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.attnImplementation") }}</div><AppSelect v-model="streaming.attn_implementation" :options="attnImplementationSelectOptions" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.attnImplementationHint") }}</p></div>
+                    </template>
+                    <template v-else-if="isQwenBranch">
+                      <div class="space-y-1.5"><div class="label-sm">{{ $t("views.settings.attnImplementation") }}</div><AppSelect v-model="qwenlm.attn_implementation" :options="attnImplementationSelectOptions" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.attnImplementationHint") }}</p></div>
+                    </template>
+                    <p v-else class="text-[10px] text-muted-foreground">{{ $t("views.settings.noBranchConfig") }}</p>
+                  </div>
                 </div>
               </section>
             </div>
@@ -484,7 +566,8 @@ onActivated(() => {
               <section class="space-y-3 min-w-0"><h3 class="text-sm font-medium flex items-center gap-2"><SlidersHorizontal class="w-4 h-4 text-muted-foreground" /> {{ $t("views.settings.other") }}</h3><div class="space-y-2"><div class="flex items-center gap-2"><Volume2 class="w-4 h-4 text-muted-foreground" /><span class="text-xs text-muted-foreground">{{ $t("views.settings.globalVolume") }}</span></div><div class="flex items-center gap-3"><AppSlider v-model="globalVolume" :min="0" :max="100" :step="1" :format="(v: number) => v + '%'" class="flex-1" /></div></div></section>
             </div>
           </div>
-          <div v-if="activeSection === 'server'" class="hidden xl:block absolute w-px bg-border left-1/2 -translate-x-1/2 top-16 bottom-4 pointer-events-none"></div>
+          <!-- 分隔线 = 左内边距(20px) + 第 1 列宽((100% - 40px 内边距 - 40px 间隙)/3) + 半间隙(20px) = 33.333% + 13.333px -->
+          <div v-if="activeSection === 'server'" class="hidden xl:block absolute w-px bg-border left-[calc(33.333%+13.333px)] -translate-x-1/2 top-16 bottom-4 pointer-events-none"></div>
           <div v-if="activeSection === 'user'" class="hidden xl:block absolute w-px bg-border left-[calc(60%-8px)] -translate-x-1/2 top-16 bottom-4 pointer-events-none"></div>
         </section>
       </div>

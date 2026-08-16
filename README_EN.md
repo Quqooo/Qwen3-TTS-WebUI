@@ -104,6 +104,7 @@ Edit `backend/settings.json`:
 ```json
 {
   "gpu_devices": "0",
+  "dtype": "auto",
   "max_concurrent_models": 1,
   "idle_unload_seconds": 600,
   "worker_idle_unload_seconds": 600,
@@ -112,7 +113,7 @@ Edit `backend/settings.json`:
   "env_dir": "",
   "model_dir": "",
   "voice_dir": "",
-  "andimarafioti": {
+  "faster": {
     "max_seq_len": 2048,
     "predictor_graph": {
       "do_sample": true,
@@ -120,6 +121,18 @@ Edit `backend/settings.json`:
       "top_p": 1.0,
       "temperature": 0.9
     }
+  },
+  "qwenlm": {
+    "attn_implementation": "auto"
+  },
+  "streaming": {
+    "use_compile": true,
+    "use_cuda_graphs": false,
+    "compile_mode": "reduce-overhead",
+    "use_fast_codebook": true,
+    "compile_codebook_predictor": true,
+    "compile_talker": true,
+    "attn_implementation": "auto"
   },
   "batch_composer": {
     "max_segments": 1000,
@@ -137,7 +150,8 @@ Edit `backend/settings.json`:
 
 | Field | Description |
 |-------|-------------|
-| `gpu_devices` | GPU devices to use, e.g. `"2 0 3-5"` or `"0,1"`, defaults to `"0"`. Order determines loading priority; range syntax supported |
+| `gpu_devices` | GPU devices to use, e.g. `"2 0 3-5"` or `"0,1"`, defaults to `"0"`. Order determines loading priority; range syntax supported. Use `"cpu"` for CPU inference (can be mixed with GPU slots; the Faster branch does not support CPU) |
+| `dtype` | Model loading precision: `auto` / `bf16` / `fp16` / `float32`, default `auto`. `auto` prefers bf16, then fp16, then float32; resolves to float32 on CPU slots |
 | `max_concurrent_models` | Maximum distinct models per GPU |
 | `idle_unload_seconds` | Model idle timeout (seconds); models unused beyond this duration are auto-unloaded |
 | `worker_idle_unload_seconds` | Worker idle timeout (seconds); workers with no cached models are stopped after this duration |
@@ -146,10 +160,12 @@ Edit `backend/settings.json`:
 | `env_dir` | Python virtual environment path for Qwen3-TTS |
 | `model_dir` | Model weights directory |
 | `voice_dir` | Voice file storage directory |
-| `andimarafioti` | Branch-specific settings for `andimarafioti/faster-qwen3-tts` (see sub-fields below) |
+| `faster` | Branch-specific settings for `andimarafioti/faster-qwen3-tts` (see sub-fields below) |
+| `qwenlm` | Branch-specific settings for `QwenLM/Qwen3-TTS` (see sub-fields below) |
+| `streaming` | Branch-specific settings for `dffdeeq/Qwen3-TTS-streaming` (see sub-fields below) |
 | `batch_composer` | Batch audio composition limits (see sub-fields below) |
 
-`andimarafioti` sub-fields:
+`faster` sub-fields:
 
 | Sub-Field | Default | Description |
 |-----------|---------|-------------|
@@ -160,6 +176,24 @@ Edit `backend/settings.json`:
 | `predictor_graph.temperature` | 0.9 | Codebook Predictor temperature, range (0, 10] |
 
 The four `predictor_graph` fields are CUDA Graph capture-time parameters. Saving changes does not immediately stop the Worker. Before the next Faster inference request, PredictorGraph is recaptured with the new values; subsequent requests with unchanged settings do not recapture it again.
+
+`qwenlm` sub-fields:
+
+| Sub-Field | Default | Description |
+|-----------|---------|-------------|
+| `attn_implementation` | auto | Attention implementation for the official branch |
+
+`streaming` sub-fields:
+
+| Sub-Field | Default | Description |
+|-----------|---------|-------------|
+| `use_compile` | `true` | Whether to enable torch.compile; honored on CPU slots as configured |
+| `use_cuda_graphs` | `false` | Whether to enable CUDA Graphs (CUDA only; forced off on CPU slots) |
+| `compile_mode` | reduce-overhead | torch.compile mode |
+| `use_fast_codebook` | `true` | Whether to enable the fast codebook |
+| `compile_codebook_predictor` | `true` | Whether to compile the Codebook Predictor |
+| `compile_talker` | `true` | Whether to compile the Talker |
+| `attn_implementation` | auto | Attention implementation for the streaming branch |
 
 `batch_composer` sub-fields:
 

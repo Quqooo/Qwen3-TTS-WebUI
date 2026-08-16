@@ -104,6 +104,7 @@ pnpm build
 ```json
 {
   "gpu_devices": "0",
+  "dtype": "auto",
   "max_concurrent_models": 1,
   "idle_unload_seconds": 600,
   "worker_idle_unload_seconds": 600,
@@ -112,7 +113,7 @@ pnpm build
   "env_dir": "",
   "model_dir": "",
   "voice_dir": "",
-  "andimarafioti": {
+  "faster": {
     "max_seq_len": 2048,
     "predictor_graph": {
       "do_sample": true,
@@ -120,6 +121,18 @@ pnpm build
       "top_p": 1.0,
       "temperature": 0.9
     }
+  },
+  "qwenlm": {
+    "attn_implementation": "auto"
+  },
+  "streaming": {
+    "use_compile": true,
+    "use_cuda_graphs": false,
+    "compile_mode": "reduce-overhead",
+    "use_fast_codebook": true,
+    "compile_codebook_predictor": true,
+    "compile_talker": true,
+    "attn_implementation": "auto"
   },
   "batch_composer": {
     "max_segments": 1000,
@@ -137,7 +150,8 @@ pnpm build
 
 | 字段 | 说明 |
 |------|------|
-| `gpu_devices` | 使用的 GPU 设备列表，如 `"2 0 3-5"` 或 `"0,1"`，留空默认 `"0"`。书写顺序即为加载优先级，支持区间语法 |
+| `gpu_devices` | 使用的 GPU 设备列表，如 `"2 0 3-5"` 或 `"0,1"`，留空默认 `"0"`。书写顺序即为加载优先级，支持区间语法；填入 `"cpu"` 使用 CPU 推理（可与 GPU 编号混排，Faster 分支不支持 CPU） |
+| `dtype` | 模型加载精度，可选 `auto` / `bf16` / `fp16` / `float32`，默认 `auto`。`auto` 优先 bf16、其次 fp16、最后 float32；CPU 槽位上 `auto` 解析为 float32 |
 | `max_concurrent_models` | 每 GPU 最多同时加载的不同模型数 |
 | `idle_unload_seconds` | 模型空闲超时（秒），超过该时间未使用自动卸载 |
 | `worker_idle_unload_seconds` | Worker 空闲超时（秒），无模型缓存的 Worker 超过该时间自动停止 |
@@ -146,10 +160,12 @@ pnpm build
 | `env_dir` | Qwen3-TTS 的 Python 虚拟环境路径 |
 | `model_dir` | 模型权重目录 |
 | `voice_dir` | 音色文件存储目录 |
-| `andimarafioti` | `andimarafioti/faster-qwen3-tts` 分支专属配置（见下方子字段） |
+| `faster` | `andimarafioti/faster-qwen3-tts` 分支专属配置（见下方子字段） |
+| `qwenlm` | `QwenLM/Qwen3-TTS` 官方分支专属配置（见下方子字段） |
+| `streaming` | `dffdeeq/Qwen3-TTS-streaming` 分支专属配置（见下方子字段） |
 | `batch_composer` | 批量音频合成限制（见下方子字段） |
 
-`andimarafioti` 子字段：
+`faster` 子字段：
 
 | 子字段 | 默认值 | 说明 |
 |--------|--------|------|
@@ -160,6 +176,24 @@ pnpm build
 | `predictor_graph.temperature` | 0.9 | Codebook Predictor 温度，范围 (0, 10] |
 
 `predictor_graph` 四项为 CUDA Graph 捕获期参数。修改后不会立即停止 Worker；下一次 Faster 推理请求会在开始推理前使用新参数重新捕获 PredictorGraph，相同配置的后续请求不会重复捕获。
+
+`qwenlm` 子字段：
+
+| 子字段 | 默认值 | 说明 |
+|--------|--------|------|
+| `attn_implementation` | auto | 官方分支加载模型的注意力实现 |
+
+`streaming` 子字段：
+
+| 子字段 | 默认值 | 说明 |
+|--------|--------|------|
+| `use_compile` | `true` | 是否启用 torch.compile；CPU 槽位上仍按此配置生效 |
+| `use_cuda_graphs` | `false` | 是否启用 CUDA Graphs（仅 CUDA 可用；CPU 槽位强制关闭） |
+| `compile_mode` | reduce-overhead | torch.compile 编译模式 |
+| `use_fast_codebook` | `true` | 是否启用快速码本 |
+| `compile_codebook_predictor` | `true` | 是否编译 Codebook Predictor |
+| `compile_talker` | `true` | 是否编译 Talker |
+| `attn_implementation` | auto | Streaming 分支注意力实现 |
 
 `batch_composer` 子字段：
 

@@ -6,8 +6,10 @@ QwenLM/Qwen3-TTS 官方分支桥接模块
 """
 import logging
 import os
+from typing import Any, Dict
 
 from ..pooled_branch import PooledWorkerBranch
+from ...config import settings
 
 _logger = logging.getLogger("qwen-webui.branch.official")
 
@@ -25,3 +27,6 @@ class QwenBranch(PooledWorkerBranch):
 
     def __init__(self):
         super().__init__(_PROVIDER_FILE, _logger)
+
+    def _load_provider_options(self) -> Dict[str, Any]:
+        return dict(settings.qwenlm)

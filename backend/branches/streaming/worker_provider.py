@@ -12,7 +12,7 @@ from backend.worker.provider import (
 )
 
 
-_LOAD_OPTIONS = {"device_map", "dtype", "attn_implementation", "local_files_only"}
+_LOAD_OPTIONS = {"device_map", "local_files_only"}
 _GENERATION_OPTIONS = {
     "do_sample", "top_k", "top_p", "temperature", "repetition_penalty",
     "subtalker_dosample", "subtalker_top_k", "subtalker_top_p",
@@ -102,8 +102,12 @@ class StreamingQwenProvider(WorkerProvider):
         Qwen3TTSTalkerForConditionalGeneration.enable_compile = compile_talker
 
         kwargs = {
-            "device_map": "cuda:0", "dtype": torch.bfloat16,
-            "attn_implementation": "flash_attention_2", "local_files_only": True,
+            "device_map": common.resolve_device_map(),
+            "dtype": common.resolve_dtype(load_options.get("dtype", "auto")),
+            "attn_implementation": common.resolve_attn_implementation(
+                provider_options.get("attn_implementation", "auto")
+            ),
+            "local_files_only": True,
         }
         kwargs.update(_filtered(load_options, _LOAD_OPTIONS))
         model = Qwen3TTSModel.from_pretrained(model_path, **kwargs)
@@ -113,6 +117,9 @@ class StreamingQwenProvider(WorkerProvider):
             "compile_codebook_predictor": True, "compile_talker": True,
         }
         optimization.update(_filtered(provider_options, _PROVIDER_OPTIONS))
+        if common.resolve_device() == "cpu":
+            # CUDA Graphs 仅支持 CUDA；CPU 上 torch.compile 仍按用户配置保留。
+            optimization["use_cuda_graphs"] = False
         model.enable_streaming_optimizations(**optimization)
         return model
 

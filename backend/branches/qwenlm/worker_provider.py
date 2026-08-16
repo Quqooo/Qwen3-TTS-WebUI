@@ -11,7 +11,7 @@ from backend.worker.provider import (
 )
 
 
-_LOAD_OPTIONS = {"device_map", "dtype", "attn_implementation", "local_files_only"}
+_LOAD_OPTIONS = {"device_map", "local_files_only"}
 _GENERATION_OPTIONS = {
     "do_sample", "top_k", "top_p", "temperature", "repetition_penalty",
     "subtalker_dosample", "subtalker_top_k", "subtalker_top_p",
@@ -72,13 +72,14 @@ class OfficialQwenProvider(WorkerProvider):
 
     def load_model(self, model_path: str, model_kind: str,
                    load_options: Dict[str, Any], provider_options: Dict[str, Any]) -> Any:
-        import torch
         from qwen_tts import Qwen3TTSModel
 
         defaults = {
-            "device_map": "cuda:0",
-            "dtype": torch.bfloat16,
-            "attn_implementation": "flash_attention_2",
+            "device_map": common.resolve_device_map(),
+            "dtype": common.resolve_dtype(load_options.get("dtype", "auto")),
+            "attn_implementation": common.resolve_attn_implementation(
+                provider_options.get("attn_implementation", "auto")
+            ),
             "local_files_only": True,
         }
         defaults.update(_filtered(load_options, _LOAD_OPTIONS))

@@ -21,6 +21,7 @@ from .base import NotSupportedError, TTSBranch
 from .worker_client import WorkerProcess
 from .worker_pool import WorkerPool
 from ..voices import manager as voice_manager
+from ..config import settings
 
 
 class PooledWorkerBranch(TTSBranch):
@@ -124,9 +125,11 @@ class PooledWorkerBranch(TTSBranch):
                          gpu_id: Optional[str] = None) -> None:
         gpu = gpu_id or self._pool.gpu_priority()[0]
         w = await self._pool.ensure_worker(gpu)
+        load_options: Dict[str, Any] = {"dtype": settings.dtype}
+        load_options.update(load_kwargs or {})
         resp = await w.send_cmd({
             "cmd": "load_model", "model_path": model_path,
-            "model_kind": model_kind, "load_options": load_kwargs or {},
+            "model_kind": model_kind, "load_options": load_options,
             "provider_options": self._load_provider_options(),
         })
         if not resp or not resp.get("ok"):

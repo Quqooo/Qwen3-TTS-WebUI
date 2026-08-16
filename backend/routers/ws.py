@@ -11,7 +11,7 @@ from ..cache import get_cache_manager
 from ..config import settings
 from ..model_meta import get_model_meta
 from ..tracker import get_tracker
-from ..branches import discover_branches
+from ..options import options_payload
 
 _logger = logging.getLogger("qwen-webui.ws")
 
@@ -71,12 +71,12 @@ async def _build_worker_message() -> str:
 
 
 def _build_backend_message() -> str:
-    """当前选中的后端分支及其可用选项。"""
+    """当前选中的后端分支及其可用选项（选项复用 backend/options.py 注册表）。"""
     return _encode({
         "type": "backend",
         "data": {
             "backend_branch": settings.backend_branch,
-            "backend_branch_options": list(discover_branches().keys()),
+            "backend_branch_options": options_payload()["backend_branch"],
         },
     })
 
