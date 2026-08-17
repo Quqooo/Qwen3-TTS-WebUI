@@ -90,30 +90,65 @@ def deserialize_tensor(value: Dict[str, Any]) -> Any:
 
 
 def resolve_device() -> str:
-    """当前 Worker 的设备类型："cpu" 或 "cuda"（由主进程注入的环境变量决定）。"""
-    return "cpu" if os.environ.get("QWEN_WEBUI_DEVICE") == "cpu" else "cuda"
+    """当前 Worker 的设备类型："cuda" / "cpu" / "mps"（由主进程注入的环境变量决定）。
+
+    ROCm 构建将 HIP 映射到 torch.cuda.*，因此 AMD 数字槽位同样解析为
+    "cuda"（不新增 "rocm" 槽位，显示层可用 torch.version.hip 区分）。
+    """
+    value = os.environ.get("QWEN_WEBUI_DEVICE", "")
+    if value in ("cpu", "mps"):
+        return value
+    return "cuda"
+
+
+def ensure_device_available() -> str:
+    """校验 resolve_device() 的结果在本机 torch 运行时下可用，并返回设备类型。
+
+    数字槽位解析为 "cuda"，但 CPU-only 机器（Mac / 无卡 Linux）上的 CPU 版
+    torch 没有 CUDA 运行时；此时抛出带指引的错误，而不是让模型加载失败在
+    深层堆栈中爆炸。非 cuda 设备不需要 CUDA 运行时，直接放行。
+    """
+    device = resolve_device()
+    if device == "cuda":
+        torch = _torch()
+        if not torch.cuda.is_available():
+            raise ValueError(
+                "This machine has no CUDA available; set gpu_devices to 'cpu' "
+                "(or 'mps' on Apple Silicon) or install a CUDA/ROCm build of PyTorch"
+            )
+    return device
 
 
 def resolve_device_map() -> str:
-    """HuggingFace device_map 参数：CPU 槽位返回 "cpu"，GPU 槽位返回 "cuda:0"。"""
-    return "cpu" if resolve_device() == "cpu" else "cuda:0"
+    """HuggingFace device_map 参数：cuda→"cuda:0"、cpu→"cpu"、mps→"mps"。
+
+    cuda 槽位在本机无 CUDA 时抛出带指引的 ValueError（见
+    ensure_device_available），其余槽位不依赖 torch 运行时。
+    """
+    device = ensure_device_available()
+    if device == "cuda":
+        return "cuda:0"
+    if device == "mps":
+        return "mps"
+    return "cpu"
 
 
 def resolve_dtype(value: Any) -> Any:
     """将 dtype 配置（"auto"/"bf16"/"fp16"/"float32" 或 torch.dtype）解析为 torch dtype。
 
-    "auto" 优先 bf16，其次 fp16，最后 float32。
+    "auto" 按设备解析：cuda 优先 bf16（不支持则 fp16）；mps 取 bf16
+    （M 系列芯片社区实测支持，遇杂音可手选 float32）；cpu 取 float32。
     """
     torch = _torch()
     if isinstance(value, torch.dtype):
         return value
     name = str(value or "auto").strip().lower()
     if name == "auto":
-        if torch.cuda.is_available():
+        device = resolve_device()
+        if device == "cuda" and torch.cuda.is_available():
             return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-        mps = getattr(torch.backends, "mps", None)
-        if mps is not None and mps.is_available():
-            return torch.float16
+        if device == "mps":
+            return torch.bfloat16
         return torch.float32
     mapping = {
         "bf16": torch.bfloat16,
@@ -128,19 +163,33 @@ def resolve_dtype(value: Any) -> Any:
     return mapping[name]
 
 
-def resolve_attn_implementation(value: Any) -> str:
-    """解析注意力实现配置："auto" 时优先 flash_attention_2，未安装则回退 sdpa。
+def _rocm_torch() -> bool:
+    """本机 torch 是否为 ROCm（HIP）构建。"""
+    try:
+        torch = _torch()
+        return bool(getattr(getattr(torch, "version", None), "hip", None))
+    except Exception:
+        return False
 
-    CPU 设备上 flash-attn 不可用：auto 与显式的 flash_attention_2/3 均回退 sdpa
-    （含用户显式配置的 flash_attention_2/3，直接透传会导致 CPU 加载失败）。
+
+def resolve_attn_implementation(value: Any) -> str:
+    """解析注意力实现配置："auto" 时优先 flash_attention_2，不可用则回退 sdpa。
+
+    非 cuda 设备（cpu/mps）上 flash-attn 不可用：auto 与显式的
+    flash_attention_2/3 均回退 sdpa（直接透传会导致加载失败）。
+    cuda 下 flash_attn 判定为实际 import 尝试：仅 find_spec 命中不够——
+    CUDA 版 flash-attn 轮子在 ROCm 下会 import 失败（如 #93），此时回退
+    sdpa 并记录日志，而不是让加载崩溃。
     """
     name = str(value or "auto").strip().lower()
-    if resolve_device() == "cpu":
+    device = resolve_device()
+    if device != "cuda":
         if name in ("", "auto", "flash_attention_2", "flash_attention_3"):
             if name.startswith("flash_attention"):
                 _logger.info(
-                    "attn_implementation %s is unavailable on CPU, falling back to sdpa",
+                    "attn_implementation %s is unavailable on %s, falling back to sdpa",
                     name,
+                    device.upper(),
                 )
             return "sdpa"
         return name
@@ -149,9 +198,18 @@ def resolve_attn_implementation(value: Any) -> str:
             import importlib.util
 
             if importlib.util.find_spec("flash_attn") is not None:
+                import flash_attn  # noqa: F401  # 实际导入验证轮子与本机 torch 匹配
                 return "flash_attention_2"
-        except Exception:
-            pass
+        except Exception as exc:
+            if _rocm_torch():
+                _logger.info(
+                    "flash_attn import failed on ROCm torch (%s); falling back to sdpa",
+                    exc,
+                )
+            else:
+                _logger.info(
+                    "flash_attn import failed (%s); falling back to sdpa", exc
+                )
         return "sdpa"
     return name
 

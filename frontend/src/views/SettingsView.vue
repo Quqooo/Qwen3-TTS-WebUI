@@ -128,8 +128,8 @@ function selectOptions(key: keyof SettingsOptions) {
 }
 const branchSelectOptions = computed(() => selectOptions("backend_branch"))
 const isFasterBranch = computed(() => backendBranch.value === "andimarafioti/faster-qwen3-tts")
-const usesCpuSlot = computed(() =>
-  gpuDevices.value.split(/[\s,]+/).some(token => token.toLowerCase() === "cpu"),
+const usesNonCudaSlot = computed(() =>
+  gpuDevices.value.split(/[\s,]+/).some(token => ["cpu", "mps"].includes(token.toLowerCase())),
 )
 const isStreamingBranch = computed(() => backendBranch.value === "dffdeeq/Qwen3-TTS-streaming")
 const isQwenBranch = computed(() => backendBranch.value === "QwenLM/Qwen3-TTS")
@@ -426,7 +426,7 @@ onActivated(() => {
               <section class="min-w-0 space-y-4">
                 <h3 class="text-sm font-medium flex items-center gap-2"><Server class="w-4 h-4 text-muted-foreground" /> {{ $t("views.settings.modelCache") }}</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
-                  <div class="space-y-1.5"><label for="settings-gpu-devices" class="label-sm">{{ $t("views.settings.gpuDevices") }}</label><input id="settings-gpu-devices" name="gpu_devices" v-model="gpuDevices" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.gpuDevicesPlaceholder')" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.gpuDevicesHint") }}</p><p v-if="isFasterBranch && usesCpuSlot" class="text-[10px] text-destructive">{{ $t("views.settings.gpuDevicesCpuFasterHint") }}</p></div>
+                  <div class="space-y-1.5"><label for="settings-gpu-devices" class="label-sm">{{ $t("views.settings.gpuDevices") }}</label><input id="settings-gpu-devices" name="gpu_devices" v-model="gpuDevices" type="text" class="w-full px-3 py-2 text-sm" :placeholder="$t('views.settings.gpuDevicesPlaceholder')" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.gpuDevicesHint") }}</p><p v-if="isFasterBranch && usesNonCudaSlot" class="text-[10px] text-destructive">{{ $t("views.settings.gpuDevicesCpuFasterHint") }}</p></div>
                   <div class="space-y-1.5"><label for="settings-max-concurrent" class="label-sm">{{ $t("views.settings.maxConcurrent") }}</label><input id="settings-max-concurrent" name="max_concurrent_models" v-model.number="maxConcurrent" type="number" min="1" max="16" class="w-full px-3 py-2 text-sm" @wheel="onConcurrentWheel" /><p class="text-[10px] text-muted-foreground">{{ $t("views.settings.maxConcurrentHint") }}</p></div>
                   <div class="space-y-1.5"><label for="settings-idle-unload" class="label-sm">{{ $t("views.settings.idleUnload") }}</label><input id="settings-idle-unload" name="idle_unload_seconds" v-model.number="idleTimeout" type="number" min="0" max="86400" step="60" class="w-full px-3 py-2 text-sm" /></div>
                   <div class="space-y-1.5"><label for="settings-worker-idle-unload" class="label-sm">{{ $t("views.settings.workerIdleUnload") }}</label><input id="settings-worker-idle-unload" name="worker_idle_unload_seconds" v-model.number="workerIdleTimeout" type="number" min="0" max="86400" step="60" class="w-full px-3 py-2 text-sm" /></div>
@@ -457,7 +457,7 @@ onActivated(() => {
                             <span class="flex items-center gap-2 min-w-0 text-left"><button class="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors hover:text-destructive" v-tooltip="$t('views.settings.unloadModel')" @click="unloadModel(row.id)"><XCircle class="w-4 h-4" /></button><span class="truncate font-mono" :title="row.id">{{ row.id }}</span></span>
                           </td>
                           <td class="px-2 text-center font-mono tabular-nums border-l border-l-border/25">{{ row.count }}</td>
-                          <td class="px-2 text-center font-mono text-muted-foreground border-l border-l-border/25">{{ row.gpu === "cpu" ? "CPU" : "GPU " + row.gpu }}</td>
+                          <td class="px-2 text-center font-mono text-muted-foreground border-l border-l-border/25">{{ row.gpu === "cpu" ? "CPU" : row.gpu === "mps" ? "MPS" : "GPU " + row.gpu }}</td>
                         </tr>
                       </tbody>
                     </table>

@@ -24,9 +24,12 @@ _WORKER_SCRIPT = os.path.abspath(
 class WorkerProcess:
     """Manage a unified worker and its main, detached, and stream connections.
 
-    Each worker is bound to a single GPU via CUDA_VISIBLE_DEVICES injected
-    into the subprocess environment. The "cpu" slot hides every CUDA device
-    and marks the worker as CPU-only via QWEN_WEBUI_DEVICE.
+    Each worker is bound to a single device slot via environment injection
+    (see start()): numeric slots expose exactly one CUDA/HIP device through
+    CUDA_VISIBLE_DEVICES / ROCR_VISIBLE_DEVICES, the "cpu" slot hides every
+    accelerator and marks the worker as CPU-only, and the "mps" slot enables
+    Apple Metal with PYTORCH_ENABLE_MPS_FALLBACK. The resolved device kind is
+    passed to the worker via QWEN_WEBUI_DEVICE.
     """
 
     def __init__(
@@ -176,8 +179,15 @@ class WorkerProcess:
         if self.gpu_id == "cpu":
             env["CUDA_VISIBLE_DEVICES"] = ""
             env["QWEN_WEBUI_DEVICE"] = "cpu"
+        elif self.gpu_id == "mps":
+            env["CUDA_VISIBLE_DEVICES"] = ""
+            env["QWEN_WEBUI_DEVICE"] = "mps"
+            env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
         else:
             env["CUDA_VISIBLE_DEVICES"] = self.gpu_id
+            # ROCm 双保险：ROCm 构建同样读取 CUDA_VISIBLE_DEVICES，
+            # 但部分运行时组合下 ROCR_VISIBLE_DEVICES 更直接。
+            env["ROCR_VISIBLE_DEVICES"] = self.gpu_id
             env["QWEN_WEBUI_DEVICE"] = "cuda"
         try:
             self._process = subprocess.Popen(

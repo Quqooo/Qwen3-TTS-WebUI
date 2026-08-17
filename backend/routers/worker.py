@@ -23,25 +23,25 @@ router = APIRouter(prefix="/api", tags=["worker"], dependencies=[Depends(require
 
 
 class WorkerTargetRequest(BaseModel):
-    """Worker 操作请求体，target 为目标设备槽位（GPU 编号或 cpu，all 表示全部）"""
+    """Worker 操作请求体，target 为目标设备槽位（GPU 编号、cpu 或 mps，all 表示全部）"""
     target: Optional[str] = None
 
 
 def _resolve_target(target: Optional[str], allow_all: bool) -> Tuple[Optional[str], bool]:
-    """解析路径中的目标设备槽位（GPU 编号或 cpu），返回 (device_id, is_all)"""
+    """解析路径中的目标设备槽位（GPU 编号、cpu 或 mps），返回 (device_id, is_all)"""
     if target is None:
         return None, False
     if target.lower() == "all":
         if not allow_all:
             raise_error(status_code=400, detail="'all' is not supported for this operation")
         return None, True
-    if not (target.isdigit() or target.lower() == "cpu"):
+    if not (target.isdigit() or target.lower() in ("cpu", "mps")):
         raise_error(
             status_code=400,
             detail=f"Invalid device slot: {target}",
             debug=f"configured devices: {settings.gpu_list()}",
         )
-    return target if target.isdigit() else "cpu", False
+    return target if target.isdigit() else target.lower(), False
 
 
 @router.get("/worker/status")

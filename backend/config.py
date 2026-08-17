@@ -30,22 +30,25 @@ def settings_path() -> Path:
 
 
 def parse_gpu_devices(value: str) -> List[str]:
-    """解析 GPU 设备列表配置，返回按优先级排序的设备 ID 列表。
+    """解析推理设备列表配置，返回按优先级排序的设备槽位列表。
 
     语法：以空白或逗号分隔的设备项，每项为单个编号（"2"）、区间（"3-5"）
-    或 "cpu"（大小写不敏感，CPU 推理槽位）。
+    或单槽 token "cpu" / "mps"（大小写不敏感，分别为 CPU 与 Apple MPS
+    推理槽位）。单槽不可写区间，且全列表仅允许出现一次。
     例如 "2 0 3-5 cpu" → ["2", "0", "3", "4", "5", "cpu"]，优先级按书写顺序。
     留空时默认 ["0"]。重复设备仅保留第一次出现的位置。
     """
     if not value or not value.strip():
         return ["0"]
     devices: List[str] = []
+    single_slots = ("cpu", "mps")
     for token in re.split(r"[\s,]+", value.strip()):
         if not token:
             continue
-        if token.lower() == "cpu":
-            if "cpu" not in devices:
-                devices.append("cpu")
+        lowered = token.lower()
+        if lowered in single_slots:
+            if lowered not in devices:
+                devices.append(lowered)
             continue
         m = re.fullmatch(r"(\d+)(?:-(\d+))?", token)
         if not m:
@@ -70,7 +73,7 @@ class AppSettings:
 
     def __init__(self):
         # 模型缓存相关
-        self.gpu_devices: str = ""             # GPU 设备列表，如 "2 0 3-5"，留空使用 0
+        self.gpu_devices: str = ""             # 推理设备槽位，如 "2 0 3-5 cpu mps"，留空使用 0
         self.dtype: str = "auto"               # 推理精度：auto | bf16 | fp16 | float32
         self.max_concurrent_models: int = 1    # 每 GPU 最多加载的不同模型数
         self.idle_unload_seconds: int = 600    # 模型空闲卸载时间（秒）

@@ -117,9 +117,13 @@ class StreamingQwenProvider(WorkerProvider):
             "compile_codebook_predictor": True, "compile_talker": True,
         }
         optimization.update(_filtered(provider_options, _PROVIDER_OPTIONS))
-        if common.resolve_device() == "cpu":
-            # CUDA Graphs 仅支持 CUDA；CPU 上 torch.compile 仍按用户配置保留。
+        device = common.resolve_device()
+        if device != "cuda":
+            # CUDA Graphs 仅支持 CUDA（cpu/mps 强制关闭）；MPS 上 torch.compile
+            # 无设备门控且上游无案例，同样强制关闭（cpu 保留用户配置的 compile）。
             optimization["use_cuda_graphs"] = False
+            if device == "mps":
+                optimization["use_compile"] = False
         model.enable_streaming_optimizations(**optimization)
         return model
 

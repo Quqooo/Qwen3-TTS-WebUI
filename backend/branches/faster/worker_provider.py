@@ -69,11 +69,15 @@ class FasterQwenProvider(WorkerProvider):
 
     def load_model(self, model_path: str, model_kind: str,
                    load_options: Dict[str, Any], provider_options: Dict[str, Any]) -> Any:
-        if common.resolve_device() == "cpu":
+        device = common.resolve_device()
+        if device != "cuda":
             raise ProviderValidationError(
-                "andimarafioti/faster-qwen3-tts requires CUDA (CUDA Graphs); "
-                "cpu device is not supported"
+                "andimarafioti/faster-qwen3-tts requires CUDA (NVIDIA or AMD ROCm); "
+                f"{device} device is not supported"
             )
+        # 数字槽位在无 CUDA 的机器（Mac / CPU-only）上给出带指引的报错，
+        # 而不是让 FasterQwen3TTS 在深层堆栈中失败。
+        common.ensure_device_available()
         from faster_qwen3_tts import FasterQwen3TTS
         kwargs = {
             "device": "cuda",
